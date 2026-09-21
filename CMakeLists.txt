@@ -557,11 +557,11 @@ add_test(
     COMMAND runtime_reporter_tests
 )
 
-add_executable(mercaminer_mine_loop
+add_executable(mercaminer
     src/mine_loop.cpp
 )
 
-target_link_libraries(mercaminer_mine_loop
+target_link_libraries(mercaminer
     PRIVATE
         mercaminer_longpoll
         mercaminer_miner_config
