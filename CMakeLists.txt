@@ -377,6 +377,40 @@ target_link_libraries(mercaminer_mine_once
 )
 
 
+
+find_package(Threads REQUIRED)
+
+add_library(mercaminer_longpoll
+    src/longpoll.cpp
+)
+
+target_include_directories(mercaminer_longpoll
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(mercaminer_longpoll
+    PUBLIC
+        mercaminer_gbt
+        mercaminer_rpc
+        Threads::Threads
+)
+
+add_executable(longpoll_tests
+    tests/longpoll_tests.cpp
+)
+
+target_link_libraries(longpoll_tests
+    PRIVATE
+        mercaminer_longpoll
+)
+
+add_test(
+    NAME longpoll_tests
+    COMMAND longpoll_tests
+)
+
+
 add_executable(mercaminer_mine_loop
     src/mine_loop.cpp
 )
@@ -384,6 +418,7 @@ add_executable(mercaminer_mine_loop
 target_link_libraries(mercaminer_mine_loop
     PRIVATE
         mercaminer_candidate_miner
+        mercaminer_longpoll
         mercaminer_mining_job
         mercaminer_network
         mercaminer_rpc

@@ -5,6 +5,7 @@
 #include <candidate_miner.h>
 #include <gbt.h>
 #include <hash256.h>
+#include <longpoll.h>
 #include <mining_job.h>
 #include <network.h>
 #include <rpc.h>
@@ -347,6 +348,8 @@ ResolvedSubmitOutcome SubmitCandidateReliably(
 int main(int argc, char* argv[])
 {
     using mercaminer::FindNetworkIdentity;
+    using mercaminer::LongpollStatus;
+    using mercaminer::LongpollWatcher;
     using mercaminer::MineBlockCandidate;
     using mercaminer::MiningJob;
     using mercaminer::NonceScanner;
@@ -401,10 +404,13 @@ int main(int argc, char* argv[])
                 "unsupported Mercatura network");
         }
 
+        const RpcCredentials credentials =
+            RpcCredentials::FromCookieFile(
+                cookie_file);
+
         RpcClient rpc{
             rpc_url,
-            RpcCredentials::FromCookieFile(
-                cookie_file)};
+            credentials};
 
         const auto initial_blockchain =
             mercaminer::ParseBlockchainInfo(
@@ -461,6 +467,11 @@ int main(int argc, char* argv[])
                     payout_script,
                     work.block_template.height};
 
+                LongpollWatcher watcher{
+                    rpc_url,
+                    credentials,
+                    work.block_template.longpoll_id};
+
                 bool refresh_template{false};
 
                 while (job.HasMoreCandidates() &&
@@ -481,7 +492,8 @@ int main(int argc, char* argv[])
                             mining_candidate.candidate,
                             work.block_template.target,
                             work.block_template.nonce_min,
-                            work.block_template.nonce_max);
+                            work.block_template.nonce_max,
+                            watcher.StaleFlag());
 
                     if (result.hashes_checked >
                         std::numeric_limits<std::uint64_t>::max() -
@@ -495,17 +507,74 @@ int main(int argc, char* argv[])
 
                     if (result.status ==
                         ScanStatus::CANCELLED) {
-                        throw std::runtime_error(
-                            "mining unexpectedly cancelled");
+                        const LongpollStatus status =
+                            watcher.Finish();
+
+                        if (status ==
+                            LongpollStatus::RPC_ERROR) {
+                            std::cerr
+                                << "Longpoll failed: "
+                                << watcher.Error()
+                                << "; refreshing template\n";
+                        } else {
+                            std::cout
+                                << "Longpoll reported new work; "
+                                << "discarding stale candidate\n";
+                        }
+
+                        refresh_template = true;
+                        continue;
                     }
 
                     if (result.status ==
                         ScanStatus::EXHAUSTED) {
+                        if (watcher.IsStale()) {
+                            const LongpollStatus status =
+                                watcher.Finish();
+
+                            if (status ==
+                                LongpollStatus::RPC_ERROR) {
+                                std::cerr
+                                    << "Longpoll failed: "
+                                    << watcher.Error()
+                                    << "; refreshing template\n";
+                            } else {
+                                std::cout
+                                    << "Longpoll reported new work; "
+                                    << "refreshing template\n";
+                            }
+
+                            refresh_template = true;
+                            continue;
+                        }
+
                         std::cout
                             << "Nonce range exhausted after "
                             << result.hashes_checked
                             << " hashes; advancing extranonce\n";
 
+                        continue;
+                    }
+
+                    const LongpollStatus watcher_status =
+                        watcher.Finish();
+
+                    if (watcher.IsStale()) {
+                        if (watcher_status ==
+                            LongpollStatus::RPC_ERROR) {
+                            std::cerr
+                                << "Longpoll failed: "
+                                << watcher.Error()
+                                << "; discarding solved candidate "
+                                << "and refreshing template\n";
+                        } else {
+                            std::cout
+                                << "Template changed while solution "
+                                << "was being found; discarding "
+                                << "solved candidate\n";
+                        }
+
+                        refresh_template = true;
                         continue;
                     }
 
@@ -581,6 +650,8 @@ int main(int argc, char* argv[])
 
                 if (!job.HasMoreCandidates() &&
                     !refresh_template) {
+                    (void)watcher.Finish();
+
                     throw std::runtime_error(
                         "64-bit extranonce space exhausted");
                 }
