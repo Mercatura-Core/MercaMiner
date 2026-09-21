@@ -19,6 +19,17 @@ target_include_directories(mercahash
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
+add_library(mercaminer_core
+    src/header.cpp
+    src/target.cpp
+    src/uint256.cpp
+)
+
+target_include_directories(mercaminer_core
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
 add_executable(mercahash_vectors
     tests/mercahash_vectors.cpp
 )
@@ -28,9 +39,38 @@ target_link_libraries(mercahash_vectors
         mercahash
 )
 
+add_executable(header_tests
+    tests/header_tests.cpp
+)
+
+target_link_libraries(header_tests
+    PRIVATE
+        mercaminer_core
+        mercahash
+)
+
+add_executable(target_tests
+    tests/target_tests.cpp
+)
+
+target_link_libraries(target_tests
+    PRIVATE
+        mercaminer_core
+)
+
 enable_testing()
 
 add_test(
     NAME mercahash_vectors
     COMMAND mercahash_vectors
+)
+
+add_test(
+    NAME header_tests
+    COMMAND header_tests
+)
+
+add_test(
+    NAME target_tests
+    COMMAND target_tests
 )
