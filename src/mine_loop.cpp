@@ -16,8 +16,10 @@
 
 #include <nlohmann/json.hpp>
 
+#include <atomic>
 #include <charconv>
 #include <chrono>
+#include <csignal>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
@@ -29,6 +31,79 @@
 #include <utility>
 
 namespace {
+
+volatile std::sig_atomic_t g_shutdown_signal{0};
+
+void HandleShutdownSignal(int signal) noexcept
+{
+    if (g_shutdown_signal == 0) {
+        g_shutdown_signal = signal;
+    }
+}
+
+class ShutdownMonitor
+{
+public:
+    explicit ShutdownMonitor(
+        std::atomic_bool& shutdown)
+        : m_thread(
+              [&shutdown](
+                  std::stop_token token) {
+                  while (!token.stop_requested()) {
+                      if (g_shutdown_signal != 0) {
+                          shutdown.store(
+                              true,
+                              std::memory_order_relaxed);
+                          return;
+                      }
+
+                      std::this_thread::sleep_for(
+                          std::chrono::milliseconds{10});
+                  }
+              })
+    {
+    }
+
+private:
+    std::jthread m_thread;
+};
+
+bool InterruptibleSleep(
+    std::chrono::milliseconds duration,
+    const std::atomic_bool* cancelled)
+{
+    constexpr auto STEP =
+        std::chrono::milliseconds{10};
+
+    auto remaining = duration;
+
+    while (remaining.count() > 0) {
+        if (cancelled != nullptr &&
+            cancelled->load(
+                std::memory_order_relaxed)) {
+            return false;
+        }
+
+        const auto delay =
+            remaining < STEP
+                ? remaining
+                : STEP;
+
+        std::this_thread::sleep_for(delay);
+        remaining -= delay;
+    }
+
+    return true;
+}
+
+mercaminer::RpcCallOptions
+ShutdownRpcOptions(
+    const std::atomic_bool* cancelled)
+{
+    mercaminer::RpcCallOptions options;
+    options.cancelled = cancelled;
+    return options;
+}
 
 unsigned char HexDigit(char c)
 {
@@ -219,22 +294,28 @@ struct CurrentWork
 };
 
 CurrentWork FetchCurrentWork(
-    mercaminer::RpcClient& rpc)
+    mercaminer::RpcClient& rpc,
+    const std::atomic_bool* cancelled)
 {
+    const auto options =
+        ShutdownRpcOptions(cancelled);
+
     CurrentWork work;
 
     work.blockchain =
         mercaminer::ParseBlockchainInfo(
             rpc.Call(
                 "getblockchaininfo",
-                nlohmann::json::array()));
+                nlohmann::json::array(),
+                options));
 
     work.block_template =
         mercaminer::ParseBlockTemplate(
             rpc.Call(
                 "getblocktemplate",
                 nlohmann::json::array(
-                    {TemplateRequest()})));
+                    {TemplateRequest()}),
+                options));
 
     return work;
 }
@@ -266,18 +347,21 @@ enum class ResolvedSubmitOutcome
     ACCEPTED,
     REJECTED,
     NOT_CURRENT_TIP,
+    CANCELLED,
 };
 
 SubmitOutcome SubmitCandidate(
     mercaminer::RpcClient& rpc,
     const mercaminer::BlockCandidate& candidate,
-    std::string& rejection)
+    std::string& rejection,
+    const std::atomic_bool* cancelled)
 {
     const auto result =
         rpc.Call(
             "submitblock",
             nlohmann::json::array(
-                {Hex(candidate.serialized_block)}));
+                {Hex(candidate.serialized_block)}),
+            ShutdownRpcOptions(cancelled));
 
     if (result.is_null()) {
         return SubmitOutcome::ACCEPTED;
@@ -302,20 +386,26 @@ SubmitOutcome SubmitCandidate(
 bool ConfirmAcceptedTip(
     mercaminer::RpcClient& rpc,
     std::uint64_t expected_height,
-    const mercaminer::UInt256& expected_hash)
+    const mercaminer::UInt256& expected_hash,
+    const std::atomic_bool* cancelled)
 {
+    const auto options =
+        ShutdownRpcOptions(cancelled);
+
     const std::uint64_t height =
         ParseRpcHeight(
             rpc.Call(
                 "getblockcount",
-                nlohmann::json::array()),
+                nlohmann::json::array(),
+                options),
             "getblockcount");
 
     const auto best =
         ParseRpcHash(
             rpc.Call(
                 "getbestblockhash",
-                nlohmann::json::array()),
+                nlohmann::json::array(),
+                options),
             "getbestblockhash");
 
     return
@@ -329,9 +419,17 @@ ResolvedSubmitOutcome SubmitCandidateReliably(
     const mercaminer::BlockCandidate& candidate,
     std::uint64_t expected_height,
     const mercaminer::UInt256& expected_hash,
-    std::string& rejection)
+    std::string& rejection,
+    const std::atomic_bool* cancelled)
 {
     for (;;) {
+        if (cancelled != nullptr &&
+            cancelled->load(
+                std::memory_order_relaxed)) {
+            return
+                ResolvedSubmitOutcome::CANCELLED;
+        }
+
         try {
             rejection.clear();
 
@@ -339,7 +437,8 @@ ResolvedSubmitOutcome SubmitCandidateReliably(
                 SubmitCandidate(
                     rpc,
                     candidate,
-                    rejection);
+                    rejection,
+                    cancelled);
 
             if (outcome ==
                 SubmitOutcome::REJECTED) {
@@ -350,13 +449,24 @@ ResolvedSubmitOutcome SubmitCandidateReliably(
             if (ConfirmAcceptedTip(
                     rpc,
                     expected_height,
-                    expected_hash)) {
+                    expected_hash,
+                    cancelled)) {
                 return
                     ResolvedSubmitOutcome::ACCEPTED;
             }
 
             return
                 ResolvedSubmitOutcome::NOT_CURRENT_TIP;
+        } catch (
+            const mercaminer::RpcCancelledException&) {
+            if (cancelled != nullptr &&
+                cancelled->load(
+                    std::memory_order_relaxed)) {
+                return
+                    ResolvedSubmitOutcome::CANCELLED;
+            }
+
+            throw;
         } catch (const mercaminer::RpcException& error) {
             std::cerr
                 << "RPC error while submitting or confirming "
@@ -366,8 +476,12 @@ ResolvedSubmitOutcome SubmitCandidateReliably(
                 << "Retrying the same solved candidate "
                 << "in 1 second\n";
 
-            std::this_thread::sleep_for(
-                std::chrono::seconds{1});
+            if (!InterruptibleSleep(
+                    std::chrono::seconds{1},
+                    cancelled)) {
+                return
+                    ResolvedSubmitOutcome::CANCELLED;
+            }
         }
     }
 }
@@ -379,7 +493,6 @@ int main(int argc, char* argv[])
     using mercaminer::FindNetworkIdentity;
     using mercaminer::LongpollStatus;
     using mercaminer::LongpollWatcher;
-    using mercaminer::MineBlockCandidate;
     using mercaminer::MiningJob;
     using mercaminer::ParallelCandidateMiner;
     using mercaminer::RpcClient;
@@ -429,6 +542,22 @@ int main(int argc, char* argv[])
                 "payout script must not be empty");
         }
 
+        g_shutdown_signal = 0;
+
+        if (std::signal(
+                SIGINT,
+                HandleShutdownSignal) == SIG_ERR ||
+            std::signal(
+                SIGTERM,
+                HandleShutdownSignal) == SIG_ERR) {
+            throw std::runtime_error(
+                "unable to install shutdown signal handlers");
+        }
+
+        std::atomic_bool shutdown_requested{false};
+        ShutdownMonitor shutdown_monitor{
+            shutdown_requested};
+
         const auto* network =
             FindNetworkIdentity(
                 network_name);
@@ -446,23 +575,50 @@ int main(int argc, char* argv[])
             rpc_url,
             credentials};
 
-        const auto initial_blockchain =
-            mercaminer::ParseBlockchainInfo(
-                rpc.Call(
-                    "getblockchaininfo",
-                    nlohmann::json::array()));
+        try {
+            const auto startup_options =
+                ShutdownRpcOptions(
+                    &shutdown_requested);
 
-        const auto live_genesis =
-            ParseRpcHash(
-                rpc.Call(
-                    "getblockhash",
-                    nlohmann::json::array({0})),
-                "getblockhash 0");
+            const auto initial_blockchain =
+                mercaminer::ParseBlockchainInfo(
+                    rpc.Call(
+                        "getblockchaininfo",
+                        nlohmann::json::array(),
+                        startup_options));
 
-        ValidateNetworkIdentity(
-            *network,
-            initial_blockchain,
-            live_genesis);
+            const auto live_genesis =
+                ParseRpcHash(
+                    rpc.Call(
+                        "getblockhash",
+                        nlohmann::json::array({0}),
+                        startup_options),
+                    "getblockhash 0");
+
+            ValidateNetworkIdentity(
+                *network,
+                initial_blockchain,
+                live_genesis);
+        } catch (
+            const mercaminer::RpcCancelledException&) {
+            if (!shutdown_requested.load(
+                    std::memory_order_relaxed)) {
+                throw;
+            }
+
+            std::cout
+                << "MercaMiner shutdown complete\n"
+                << "  accepted blocks: 0\n"
+                << "  aggregate hashes checked: 0\n";
+
+            const int signal =
+                static_cast<int>(
+                    g_shutdown_signal);
+
+            return signal != 0
+                ? 128 + signal
+                : 0;
+        }
 
         ParallelCandidateMiner miner{
             thread_count};
@@ -490,11 +646,15 @@ int main(int argc, char* argv[])
                 << '\n';
         }
 
-        while (block_limit == 0 ||
-               accepted_blocks < block_limit) {
+        while (!shutdown_requested.load(
+                   std::memory_order_relaxed) &&
+               (block_limit == 0 ||
+                accepted_blocks < block_limit)) {
             try {
                 CurrentWork work =
-                    FetchCurrentWork(rpc);
+                    FetchCurrentWork(
+                        rpc,
+                        &shutdown_requested);
 
                 if (!TemplateMatchesTip(work)) {
                     std::cout
@@ -517,7 +677,9 @@ int main(int argc, char* argv[])
                 bool refresh_template{false};
 
                 while (job.HasMoreCandidates() &&
-                       !refresh_template) {
+                       !refresh_template &&
+                       !shutdown_requested.load(
+                           std::memory_order_relaxed)) {
                     auto mining_candidate =
                         job.NextCandidate();
 
@@ -534,7 +696,8 @@ int main(int argc, char* argv[])
                             work.block_template.target,
                             work.block_template.nonce_min,
                             work.block_template.nonce_max,
-                            watcher.StaleFlag());
+                            watcher.StaleFlag(),
+                            &shutdown_requested);
 
                     if (result.hashes_checked >
                         std::numeric_limits<std::uint64_t>::max() -
@@ -550,6 +713,16 @@ int main(int argc, char* argv[])
                         ScanStatus::CANCELLED) {
                         const LongpollStatus status =
                             watcher.Finish();
+
+                        if (shutdown_requested.load(
+                                std::memory_order_relaxed)) {
+                            std::cout
+                                << "Shutdown requested; "
+                                << "stopping mining workers\n";
+
+                            refresh_template = true;
+                            break;
+                        }
 
                         if (status ==
                             LongpollStatus::RPC_ERROR) {
@@ -600,6 +773,16 @@ int main(int argc, char* argv[])
                     const LongpollStatus watcher_status =
                         watcher.Finish();
 
+                    if (shutdown_requested.load(
+                            std::memory_order_relaxed)) {
+                        std::cout
+                            << "Shutdown requested before submission; "
+                            << "discarding solved candidate\n";
+
+                        refresh_template = true;
+                        break;
+                    }
+
                     if (watcher.IsStale()) {
                         if (watcher_status ==
                             LongpollStatus::RPC_ERROR) {
@@ -634,7 +817,17 @@ int main(int argc, char* argv[])
                             mining_candidate.candidate,
                             work.block_template.height,
                             expected_block_hash,
-                            rejection);
+                            rejection,
+                            &shutdown_requested);
+
+                    if (outcome ==
+                        ResolvedSubmitOutcome::CANCELLED) {
+                        std::cout
+                            << "Shutdown requested during submission\n";
+
+                        refresh_template = true;
+                        break;
+                    }
 
                     if (outcome ==
                         ResolvedSubmitOutcome::REJECTED) {
@@ -693,21 +886,59 @@ int main(int argc, char* argv[])
                 }
 
                 if (!job.HasMoreCandidates() &&
-                    !refresh_template) {
+                    !refresh_template &&
+                    !shutdown_requested.load(
+                        std::memory_order_relaxed)) {
                     (void)watcher.Finish();
 
                     throw std::runtime_error(
                         "64-bit extranonce space exhausted");
                 }
+            } catch (
+                const mercaminer::RpcCancelledException&) {
+                if (shutdown_requested.load(
+                        std::memory_order_relaxed)) {
+                    break;
+                }
+
+                throw;
             } catch (const RpcException& error) {
+                if (shutdown_requested.load(
+                        std::memory_order_relaxed)) {
+                    break;
+                }
+
                 std::cerr
                     << "RPC error: "
                     << error.what()
                     << "\nRetrying in 1 second\n";
 
-                std::this_thread::sleep_for(
-                    std::chrono::seconds{1});
+                if (!InterruptibleSleep(
+                        std::chrono::seconds{1},
+                        &shutdown_requested)) {
+                    break;
+                }
             }
+        }
+
+        if (shutdown_requested.load(
+                std::memory_order_relaxed)) {
+            std::cout
+                << "MercaMiner shutdown complete\n"
+                << "  accepted blocks: "
+                << accepted_blocks
+                << '\n'
+                << "  aggregate hashes checked: "
+                << total_hashes
+                << '\n';
+
+            const int signal =
+                static_cast<int>(
+                    g_shutdown_signal);
+
+            return signal != 0
+                ? 128 + signal
+                : 0;
         }
 
         std::cout

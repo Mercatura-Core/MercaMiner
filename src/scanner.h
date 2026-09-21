@@ -41,7 +41,8 @@ public:
         std::uint32_t nonce_begin,
         std::uint32_t nonce_end,
         const std::atomic_bool* cancelled = nullptr,
-        const std::atomic_bool* cancelled_secondary = nullptr);
+        const std::atomic_bool* cancelled_secondary = nullptr,
+        const std::atomic_bool* cancelled_tertiary = nullptr);
 
     std::size_t ScratchpadSize() const noexcept
     {

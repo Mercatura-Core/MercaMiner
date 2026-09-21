@@ -257,5 +257,34 @@ int main()
             cancelled_original,
         "parallel cancellation leaves candidate unchanged");
 
+    auto secondary_cancelled_candidate =
+        CoreCheckedCandidate();
+
+    const auto secondary_cancelled_original =
+        secondary_cancelled_candidate.serialized_block;
+
+    std::atomic_bool primary_cancelled{false};
+    std::atomic_bool secondary_cancelled{true};
+
+    const auto secondary_cancelled_result =
+        miner.Mine(
+            secondary_cancelled_candidate,
+            maximum_target,
+            0,
+            31,
+            &primary_cancelled,
+            &secondary_cancelled);
+
+    ok &= Check(
+        secondary_cancelled_result.status ==
+                ScanStatus::CANCELLED &&
+            secondary_cancelled_result.hashes_checked == 0,
+        "secondary external cancellation stops all workers");
+
+    ok &= Check(
+        secondary_cancelled_candidate.serialized_block ==
+            secondary_cancelled_original,
+        "secondary cancellation leaves candidate unchanged");
+
     return ok ? 0 : 1;
 }
