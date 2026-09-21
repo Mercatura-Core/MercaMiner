@@ -302,3 +302,33 @@ add_test(
     NAME scanner_tests
     COMMAND scanner_tests
 )
+
+
+add_library(mercaminer_candidate_miner
+    src/candidate_miner.cpp
+)
+
+target_include_directories(mercaminer_candidate_miner
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(mercaminer_candidate_miner
+    PUBLIC
+        mercaminer_block_builder
+        mercaminer_scanner
+)
+
+add_executable(candidate_miner_tests
+    tests/candidate_miner_tests.cpp
+)
+
+target_link_libraries(candidate_miner_tests
+    PRIVATE
+        mercaminer_candidate_miner
+)
+
+add_test(
+    NAME candidate_miner_tests
+    COMMAND candidate_miner_tests
+)
