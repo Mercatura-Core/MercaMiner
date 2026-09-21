@@ -8,6 +8,7 @@
 #include <longpoll.h>
 #include <mining_job.h>
 #include <network.h>
+#include <payout_address.h>
 #include <parallel_miner.h>
 #include <rpc.h>
 #include <scanner.h>
@@ -103,52 +104,6 @@ ShutdownRpcOptions(
     mercaminer::RpcCallOptions options;
     options.cancelled = cancelled;
     return options;
-}
-
-unsigned char HexDigit(char c)
-{
-    if (c >= '0' && c <= '9') {
-        return static_cast<unsigned char>(c - '0');
-    }
-
-    if (c >= 'a' && c <= 'f') {
-        return static_cast<unsigned char>(c - 'a' + 10);
-    }
-
-    if (c >= 'A' && c <= 'F') {
-        return static_cast<unsigned char>(c - 'A' + 10);
-    }
-
-    throw std::runtime_error(
-        "invalid hexadecimal character");
-}
-
-mercaminer::Bytes ParseHex(
-    std::string_view hex)
-{
-    if ((hex.size() % 2) != 0) {
-        throw std::runtime_error(
-            "hex string has odd length");
-    }
-
-    mercaminer::Bytes out;
-    out.reserve(hex.size() / 2);
-
-    for (std::size_t i = 0;
-         i < hex.size();
-         i += 2) {
-        const unsigned char high =
-            HexDigit(hex[i]);
-
-        const unsigned char low =
-            HexDigit(hex[i + 1]);
-
-        out.push_back(
-            static_cast<unsigned char>(
-                (high << 4) | low));
-    }
-
-    return out;
 }
 
 std::string Hex(
@@ -506,7 +461,7 @@ int main(int argc, char* argv[])
             << "Usage: "
             << argv[0]
             << " <network> <rpc-url> <cookie-file>"
-            << " <payout-script-hex> <thread-count>"
+            << " <payout-address> <thread-count>"
             << " <block-count>\n"
             << "thread-count must be at least 1\n"
             << "block-count 0 means run continuously\n";
@@ -517,12 +472,12 @@ int main(int argc, char* argv[])
     const std::string network_name{argv[1]};
     const std::string rpc_url{argv[2]};
     const std::string cookie_file{argv[3]};
-    const std::string payout_hex{argv[4]};
+    const std::string payout_address{argv[4]};
 
     if (network_name != "regtest") {
         std::cerr
-            << "This M7 continuous miner is restricted "
-            << "to regtest.\n";
+            << "MercaMiner continuous mining is currently "
+            << "restricted to regtest.\n";
 
         return 2;
     }
@@ -533,14 +488,6 @@ int main(int argc, char* argv[])
 
         const std::uint64_t block_limit =
             ParseBlockLimit(argv[6]);
-
-        const auto payout_script =
-            ParseHex(payout_hex);
-
-        if (payout_script.empty()) {
-            throw std::runtime_error(
-                "payout script must not be empty");
-        }
 
         g_shutdown_signal = 0;
 
@@ -575,6 +522,8 @@ int main(int argc, char* argv[])
             rpc_url,
             credentials};
 
+        mercaminer::Bytes payout_script;
+
         try {
             const auto startup_options =
                 ShutdownRpcOptions(
@@ -599,6 +548,12 @@ int main(int argc, char* argv[])
                 *network,
                 initial_blockchain,
                 live_genesis);
+
+            payout_script =
+                mercaminer::ResolvePayoutAddress(
+                    rpc,
+                    payout_address,
+                    startup_options);
         } catch (
             const mercaminer::RpcCancelledException&) {
             if (!shutdown_requested.load(

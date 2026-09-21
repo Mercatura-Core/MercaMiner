@@ -8,6 +8,7 @@
 #include <hash256.h>
 #include <mining_job.h>
 #include <network.h>
+#include <payout_address.h>
 #include <rpc.h>
 #include <scanner.h>
 #include <serialization.h>
@@ -24,52 +25,6 @@
 #include <utility>
 
 namespace {
-
-unsigned char HexDigit(char c)
-{
-    if (c >= '0' && c <= '9') {
-        return static_cast<unsigned char>(c - '0');
-    }
-
-    if (c >= 'a' && c <= 'f') {
-        return static_cast<unsigned char>(c - 'a' + 10);
-    }
-
-    if (c >= 'A' && c <= 'F') {
-        return static_cast<unsigned char>(c - 'A' + 10);
-    }
-
-    throw std::runtime_error(
-        "invalid hexadecimal character");
-}
-
-mercaminer::Bytes ParseHex(
-    std::string_view hex)
-{
-    if ((hex.size() % 2) != 0) {
-        throw std::runtime_error(
-            "hex string has odd length");
-    }
-
-    mercaminer::Bytes out;
-    out.reserve(hex.size() / 2);
-
-    for (std::size_t i = 0;
-         i < hex.size();
-         i += 2) {
-        const unsigned char high =
-            HexDigit(hex[i]);
-
-        const unsigned char low =
-            HexDigit(hex[i + 1]);
-
-        out.push_back(
-            static_cast<unsigned char>(
-                (high << 4) | low));
-    }
-
-    return out;
-}
 
 std::string Hex(
     const mercaminer::Bytes& bytes)
@@ -163,7 +118,7 @@ int main(int argc, char* argv[])
             << "Usage: "
             << argv[0]
             << " <network> <rpc-url> <cookie-file>"
-            << " <payout-script-hex>\n";
+            << " <payout-address>\n";
 
         return 2;
     }
@@ -171,12 +126,12 @@ int main(int argc, char* argv[])
     const std::string network_name{argv[1]};
     const std::string rpc_url{argv[2]};
     const std::string cookie_file{argv[3]};
-    const std::string payout_hex{argv[4]};
+    const std::string payout_address{argv[4]};
 
     if (network_name != "regtest") {
         std::cerr
-            << "This M6 one-shot miner is restricted "
-            << "to regtest.\n";
+            << "MercaMiner one-shot mining is currently "
+            << "restricted to regtest.\n";
 
         return 2;
     }
@@ -189,14 +144,6 @@ int main(int argc, char* argv[])
         if (network == nullptr) {
             throw std::runtime_error(
                 "unsupported Mercatura network");
-        }
-
-        const auto payout_script =
-            ParseHex(payout_hex);
-
-        if (payout_script.empty()) {
-            throw std::runtime_error(
-                "payout script must not be empty");
         }
 
         RpcClient rpc{
@@ -221,6 +168,11 @@ int main(int argc, char* argv[])
             *network,
             blockchain,
             live_genesis);
+
+        const auto payout_script =
+            mercaminer::ResolvePayoutAddress(
+                rpc,
+                payout_address);
 
         const nlohmann::json template_request{
             {

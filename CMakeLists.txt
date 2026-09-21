@@ -48,6 +48,30 @@ target_link_libraries(mercaminer_rpc
         nlohmann_json::nlohmann_json
 )
 
+add_library(mercaminer_payout_address
+    src/payout_address.cpp
+)
+
+target_include_directories(mercaminer_payout_address
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(mercaminer_payout_address
+    PUBLIC
+        mercaminer_rpc
+        nlohmann_json::nlohmann_json
+)
+
+add_executable(payout_address_tests
+    tests/payout_address_tests.cpp
+)
+
+target_link_libraries(payout_address_tests
+    PRIVATE
+        mercaminer_payout_address
+)
+
 add_library(mercaminer_gbt
     src/gbt.cpp
 )
@@ -144,6 +168,11 @@ target_link_libraries(network_tests
 )
 
 enable_testing()
+
+add_test(
+    NAME payout_address_tests
+    COMMAND payout_address_tests
+)
 
 add_test(
     NAME network_tests
@@ -373,6 +402,7 @@ target_link_libraries(mercaminer_mine_once
         mercaminer_candidate_miner
         mercaminer_mining_job
         mercaminer_network
+        mercaminer_payout_address
         mercaminer_rpc
 )
 
@@ -461,5 +491,6 @@ target_link_libraries(mercaminer_mine_loop
         mercaminer_mining_job
         mercaminer_network
         mercaminer_parallel_miner
+        mercaminer_payout_address
         mercaminer_rpc
 )
