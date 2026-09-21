@@ -744,7 +744,13 @@ int main(int argc, char* argv[])
                 std::cout};
 
             startup
-                << "MercaMiner continuous regtest mining started\n"
+                << "MercaMiner mining started\n"
+                << "  network: "
+                << network_name
+                << '\n'
+                << "  payout address: "
+                << payout_address
+                << '\n'
                 << "  worker threads: "
                 << miner.WorkerCount()
                 << '\n'
@@ -1119,9 +1125,19 @@ int main(int argc, char* argv[])
             final_stats);
 
         return 0;
+    } catch (const mercaminer::MinerConfigException& error) {
+        std::osyncstream(std::cerr)
+            << "MercaMiner configuration error: "
+            << error.what()
+            << '\n'
+            << "Use '"
+            << argv[0]
+            << " --help' for usage.\n";
+
+        return 2;
     } catch (const std::exception& error) {
         std::osyncstream(std::cerr)
-            << "MercaMiner continuous mining failed: "
+            << "MercaMiner mining failed: "
             << error.what()
             << '\n';
 
