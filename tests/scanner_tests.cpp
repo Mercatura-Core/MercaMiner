@@ -123,19 +123,28 @@ int main()
             "d8f7179f4c633c1ef158399e6181227e"
             "e1791df2c4c08689870215f22a712123");
 
+    std::atomic<std::uint64_t>
+        exact_live_hashes{0};
+
     const auto exact =
         scanner.Scan(
             header,
             exact_target,
             known_nonce,
-            known_nonce);
+            known_nonce,
+            nullptr,
+            nullptr,
+            nullptr,
+            &exact_live_hashes);
 
     ok &= Check(
         exact.status == ScanStatus::FOUND &&
             exact.nonce == known_nonce &&
             exact.hash == exact_target &&
-            exact.hashes_checked == 1,
-        "known Core MercaHash vector meets exact target");
+            exact.hashes_checked == 1 &&
+            exact_live_hashes.load(
+                std::memory_order_relaxed) == 1,
+        "known Core MercaHash vector updates live hash count");
 
     const auto below_exact =
         Parse256(
@@ -179,6 +188,8 @@ int main()
         "uint32 maximum nonce is scanned inclusively");
 
     std::atomic_bool cancelled{true};
+    std::atomic<std::uint64_t>
+        cancelled_live_hashes{0};
 
     const auto cancelled_result =
         scanner.Scan(
@@ -186,13 +197,18 @@ int main()
             maximum_target,
             100,
             200,
-            &cancelled);
+            &cancelled,
+            nullptr,
+            nullptr,
+            &cancelled_live_hashes);
 
     ok &= Check(
         cancelled_result.status ==
             ScanStatus::CANCELLED &&
-            cancelled_result.hashes_checked == 0,
-        "pre-set cancellation stops before hashing");
+            cancelled_result.hashes_checked == 0 &&
+            cancelled_live_hashes.load(
+                std::memory_order_relaxed) == 0,
+        "pre-set cancellation does not increment live hash count");
 
     ok &= Check(
         ThrowsInvalidArgument([&] {

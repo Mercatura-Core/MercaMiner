@@ -24,7 +24,8 @@ ScanResult NonceScanner::Scan(
     std::uint32_t nonce_end,
     const std::atomic_bool* cancelled,
     const std::atomic_bool* cancelled_secondary,
-    const std::atomic_bool* cancelled_tertiary)
+    const std::atomic_bool* cancelled_tertiary,
+    std::atomic<std::uint64_t>* live_hashes)
 {
     if (nonce_begin > nonce_end) {
         throw std::invalid_argument(
@@ -65,6 +66,12 @@ ScanResult NonceScanner::Scan(
             output);
 
         ++hashes_checked;
+
+        if (live_hashes != nullptr) {
+            live_hashes->fetch_add(
+                1,
+                std::memory_order_relaxed);
+        }
 
         const UInt256 hash{output};
 

@@ -137,7 +137,8 @@ ParallelMineResult ParallelCandidateMiner::Mine(
     std::uint32_t nonce_begin,
     std::uint32_t nonce_end,
     const std::atomic_bool* cancelled,
-    const std::atomic_bool* cancelled_secondary)
+    const std::atomic_bool* cancelled_secondary,
+    std::atomic<std::uint64_t>* live_hashes)
 {
     ValidateBlockCandidateForMining(candidate);
 
@@ -174,7 +175,8 @@ ParallelMineResult ParallelCandidateMiner::Mine(
                         range.end,
                         &stop,
                         cancelled,
-                        cancelled_secondary);
+                        cancelled_secondary,
+                        live_hashes);
 
                 if (results[worker].status ==
                     ScanStatus::FOUND) {

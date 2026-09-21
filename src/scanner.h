@@ -42,7 +42,8 @@ public:
         std::uint32_t nonce_end,
         const std::atomic_bool* cancelled = nullptr,
         const std::atomic_bool* cancelled_secondary = nullptr,
-        const std::atomic_bool* cancelled_tertiary = nullptr);
+        const std::atomic_bool* cancelled_tertiary = nullptr,
+        std::atomic<std::uint64_t>* live_hashes = nullptr);
 
     std::size_t ScratchpadSize() const noexcept
     {

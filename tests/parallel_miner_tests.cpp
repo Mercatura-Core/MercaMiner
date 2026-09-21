@@ -211,19 +211,28 @@ int main()
     const auto exhausted_original =
         exhausted_candidate.serialized_block;
 
+    std::atomic<std::uint64_t>
+        exhausted_live_hashes{0};
+
     const auto exhausted =
         miner.Mine(
             exhausted_candidate,
             impossible_target,
             0,
-            1);
+            1,
+            nullptr,
+            nullptr,
+            &exhausted_live_hashes);
 
     ok &= Check(
         exhausted.status ==
                 ScanStatus::EXHAUSTED &&
             exhausted.hashes_checked == 2 &&
-            exhausted.active_workers == 2,
-        "parallel nonce ranges exhaust exactly once");
+            exhausted.active_workers == 2 &&
+            exhausted_live_hashes.load(
+                std::memory_order_relaxed) ==
+                exhausted.hashes_checked,
+        "parallel live count matches exhausted hashes");
 
     ok &= Check(
         exhausted_candidate.serialized_block ==
