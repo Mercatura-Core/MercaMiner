@@ -174,3 +174,40 @@ add_test(
     NAME target_tests
     COMMAND target_tests
 )
+
+
+add_library(mercaminer_block_primitives
+    src/serialization.cpp
+    src/hash256.cpp
+    src/merkle.cpp
+    src/crypto/sha256.cpp
+)
+
+target_include_directories(mercaminer_block_primitives
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_compile_definitions(mercaminer_block_primitives
+    PRIVATE
+        DISABLE_OPTIMIZED_SHA256
+)
+
+target_link_libraries(mercaminer_block_primitives
+    PUBLIC
+        mercaminer_core
+)
+
+add_executable(block_primitives_tests
+    tests/block_primitives_tests.cpp
+)
+
+target_link_libraries(block_primitives_tests
+    PRIVATE
+        mercaminer_block_primitives
+)
+
+add_test(
+    NAME block_primitives_tests
+    COMMAND block_primitives_tests
+)
