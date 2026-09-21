@@ -398,6 +398,27 @@ ResolvedSubmitOutcome SubmitCandidateReliably(
     }
 }
 
+void PrintMiningSessionSummary(
+    std::string_view title,
+    const mercaminer::MiningRuntimeSnapshot& stats)
+{
+    std::osyncstream(std::cout)
+        << title
+        << '\n'
+        << "  accepted blocks: "
+        << stats.accepted_blocks
+        << '\n'
+        << "  stale work: "
+        << stats.stale_work
+        << '\n'
+        << "  rejected blocks: "
+        << stats.rejected_blocks
+        << '\n'
+        << "  session hashes checked: "
+        << stats.completed_hashes
+        << '\n';
+}
+
 void PrintMiningUsage(
     const char* program)
 {
@@ -696,10 +717,12 @@ int main(int argc, char* argv[])
                 throw;
             }
 
-            std::osyncstream(std::cout)
-                << "MercaMiner shutdown complete\n"
-                << "  accepted blocks: 0\n"
-                << "  aggregate hashes checked: 0\n";
+            const mercaminer::MiningRuntimeSnapshot
+                empty_stats{};
+
+            PrintMiningSessionSummary(
+                "MercaMiner shutdown complete",
+                empty_stats);
 
             const int signal =
                 static_cast<int>(
@@ -716,6 +739,45 @@ int main(int argc, char* argv[])
         mercaminer::MiningRuntimeStats
             runtime_stats;
 
+        {
+            std::osyncstream startup{
+                std::cout};
+
+            startup
+                << "MercaMiner continuous regtest mining started\n"
+                << "  worker threads: "
+                << miner.WorkerCount()
+                << '\n'
+                << "  scratchpad memory: "
+                << (miner.ScratchpadBytes() /
+                    (1024ULL * 1024ULL))
+                << " MiB\n"
+                << "  block limit: ";
+
+            if (block_limit == 0) {
+                startup
+                    << "continuous\n";
+            } else {
+                startup
+                    << block_limit
+                    << '\n';
+            }
+
+            startup
+                << "  status interval: ";
+
+            if (report_interval == 0) {
+                startup
+                    << "disabled\n";
+            } else {
+                startup
+                    << report_interval
+                    << (report_interval == 1
+                        ? " second\n"
+                        : " seconds\n");
+            }
+        }
+
         std::unique_ptr<mercaminer::RuntimeReporter>
             reporter;
 
@@ -730,26 +792,6 @@ int main(int argc, char* argv[])
                                 std::chrono::seconds::rep>(
                                     report_interval)},
                         std::cout);
-        }
-
-        std::osyncstream(std::cout)
-            << "MercaMiner continuous regtest mining started\n"
-            << "  worker threads: "
-            << miner.WorkerCount()
-            << '\n'
-            << "  scratchpad memory: "
-            << (miner.ScratchpadBytes() /
-                (1024ULL * 1024ULL))
-            << " MiB\n";
-
-        if (block_limit == 0) {
-            std::osyncstream(std::cout)
-                << "  block limit: continuous\n";
-        } else {
-            std::osyncstream(std::cout)
-                << "  block limit: "
-                << block_limit
-                << '\n';
         }
 
         while (!shutdown_requested.load(
@@ -1002,7 +1044,7 @@ int main(int argc, char* argv[])
                         << "  aggregate block hashes checked: "
                         << result.hashes_checked
                         << '\n'
-                        << "  aggregate session hashes checked: "
+                        << "  session hashes checked: "
                         << runtime_stats.completed_hashes.load(
                                std::memory_order_relaxed)
                         << '\n'
@@ -1053,18 +1095,15 @@ int main(int argc, char* argv[])
             reporter->Stop();
         }
 
+        const auto final_stats =
+            mercaminer::SnapshotMiningRuntimeStats(
+                runtime_stats);
+
         if (shutdown_requested.load(
                 std::memory_order_relaxed)) {
-            std::osyncstream(std::cout)
-                << "MercaMiner shutdown complete\n"
-                << "  accepted blocks: "
-                << runtime_stats.accepted_blocks.load(
-                       std::memory_order_relaxed)
-                << '\n'
-                << "  aggregate hashes checked: "
-                << runtime_stats.completed_hashes.load(
-                       std::memory_order_relaxed)
-                << '\n';
+            PrintMiningSessionSummary(
+                "MercaMiner shutdown complete",
+                final_stats);
 
             const int signal =
                 static_cast<int>(
@@ -1075,16 +1114,9 @@ int main(int argc, char* argv[])
                 : 0;
         }
 
-        std::osyncstream(std::cout)
-            << "Requested block count reached\n"
-            << "  accepted blocks: "
-            << runtime_stats.accepted_blocks.load(
-                   std::memory_order_relaxed)
-            << '\n'
-            << "  aggregate hashes checked: "
-            << runtime_stats.completed_hashes.load(
-                   std::memory_order_relaxed)
-            << '\n';
+        PrintMiningSessionSummary(
+            "Requested block count reached",
+            final_stats);
 
         return 0;
     } catch (const std::exception& error) {

@@ -199,7 +199,7 @@ RuntimeReporter::RuntimeReporter(
                         << " hashrate="
                         << hash_rate
                         << " H/s"
-                        << " hashes="
+                        << " session_hashes="
                         << snapshot.completed_hashes
                         << " accepted="
                         << snapshot.accepted_blocks

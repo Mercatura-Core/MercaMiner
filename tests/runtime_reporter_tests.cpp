@@ -94,6 +94,8 @@ int main()
 
     reporter_stats.completed_hashes.store(10);
     reporter_stats.accepted_blocks.store(1);
+    reporter_stats.stale_work.store(2);
+    reporter_stats.rejected_blocks.store(3);
 
     std::this_thread::sleep_for(
         55ms);
@@ -110,11 +112,15 @@ int main()
                 std::string::npos &&
             rendered.find("workers=4") !=
                 std::string::npos &&
-            rendered.find("hashes=10") !=
+            rendered.find("session_hashes=10") !=
                 std::string::npos &&
             rendered.find("accepted=1") !=
+                std::string::npos &&
+            rendered.find("stale=2") !=
+                std::string::npos &&
+            rendered.find("rejected=3") !=
                 std::string::npos,
-        "runtime reporter emits periodic status");
+        "runtime reporter emits complete periodic status");
 
     return ok ? 0 : 1;
 }
