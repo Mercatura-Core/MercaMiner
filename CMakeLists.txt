@@ -375,3 +375,16 @@ target_link_libraries(mercaminer_mine_once
         mercaminer_network
         mercaminer_rpc
 )
+
+
+add_executable(mercaminer_mine_loop
+    src/mine_loop.cpp
+)
+
+target_link_libraries(mercaminer_mine_loop
+    PRIVATE
+        mercaminer_candidate_miner
+        mercaminer_mining_job
+        mercaminer_network
+        mercaminer_rpc
+)
