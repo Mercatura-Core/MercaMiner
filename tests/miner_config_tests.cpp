@@ -45,6 +45,7 @@ int main()
     using mercaminer::ParseMinerBlockLimit;
     using mercaminer::ParseMinerCommandLine;
     using mercaminer::ParseMinerConfigText;
+    using mercaminer::ParseMinerReportInterval;
     using mercaminer::ParseMinerThreadCount;
     using mercaminer::ResolveMinerConfig;
 
@@ -59,6 +60,7 @@ network = regtest
 payout_address = mcrt1ztest
 threads = 6
 block_limit = 0
+report_interval = 15
 rpc_url = http://127.0.0.1:27773
 cookie_file = /tmp/mercatura/regtest/.cookie
 )");
@@ -72,6 +74,8 @@ cookie_file = /tmp/mercatura/regtest/.cookie
             *config.thread_count == 6 &&
             config.block_limit &&
             *config.block_limit == 0 &&
+            config.report_interval &&
+            *config.report_interval == 15 &&
             config.rpc_url &&
             *config.rpc_url ==
                 "http://127.0.0.1:27773" &&
@@ -91,6 +95,7 @@ cookie_file = /tmp/mercatura/regtest/.cookie
             minimal.payout_address &&
             minimal.thread_count &&
             !minimal.block_limit &&
+            !minimal.report_interval &&
             !minimal.rpc_url &&
             !minimal.cookie_file,
         "optional configuration fields may be omitted");
@@ -125,6 +130,24 @@ cookie_file = /tmp/mercatura/regtest/.cookie
                 (void)ParseMinerBlockLimit("abc");
             }),
         "invalid block limits rejected");
+
+    ok &= Check(
+        ParseMinerReportInterval("0") == 0 &&
+            ParseMinerReportInterval("30") == 30,
+        "report interval parser accepts zero and positive integers");
+
+    ok &= Check(
+        ThrowsConfig([] {
+            (void)ParseMinerReportInterval("-1");
+        }) &&
+            ThrowsConfig([] {
+                (void)ParseMinerReportInterval("abc");
+            }) &&
+            ThrowsConfig([] {
+                (void)ParseMinerReportInterval(
+                    "4294967296");
+            }),
+        "invalid report intervals rejected");
 
     ok &= Check(
         ThrowsConfig([] {
@@ -215,6 +238,8 @@ cookie_file = /tmp/mercatura/regtest/.cookie
             "8",
             "--block-limit",
             "3",
+            "--report-interval",
+            "12",
             "--rpc-url",
             "http://127.0.0.1:27773",
             "--cookie-file",
@@ -235,6 +260,8 @@ cookie_file = /tmp/mercatura/regtest/.cookie
             *command_line.overrides.thread_count == 8 &&
             command_line.overrides.block_limit &&
             *command_line.overrides.block_limit == 3 &&
+            command_line.overrides.report_interval &&
+            *command_line.overrides.report_interval == 12 &&
             command_line.overrides.rpc_url &&
             command_line.overrides.cookie_file,
         "command-line overrides parsed");
@@ -281,11 +308,13 @@ cookie_file = /tmp/mercatura/regtest/.cookie
     base.payout_address = "mcrt1zbase";
     base.thread_count = 2;
     base.block_limit = 0;
+    base.report_interval = 30;
 
     MinerConfig overrides;
     overrides.payout_address = "mcrt1zoverride";
     overrides.thread_count = 6;
     overrides.block_limit = 9;
+    overrides.report_interval = 5;
 
     const MinerConfig merged =
         MergeMinerConfig(
@@ -301,8 +330,23 @@ cookie_file = /tmp/mercatura/regtest/.cookie
             merged.thread_count &&
             *merged.thread_count == 6 &&
             merged.block_limit &&
-            *merged.block_limit == 9,
+            *merged.block_limit == 9 &&
+            merged.report_interval &&
+            *merged.report_interval == 5,
         "command-line values override config values");
+
+    MinerConfig disable_report_override;
+    disable_report_override.report_interval = 0;
+
+    const MinerConfig disabled_merged =
+        MergeMinerConfig(
+            base,
+            disable_report_override);
+
+    ok &= Check(
+        disabled_merged.report_interval &&
+            *disabled_merged.report_interval == 0,
+        "zero report interval override is preserved");
 
     MinerConfig resolve_input;
     resolve_input.network = "regtest";
@@ -320,9 +364,20 @@ cookie_file = /tmp/mercatura/regtest/.cookie
                 "mcrt1zresolved" &&
             resolved.thread_count == 4 &&
             resolved.block_limit == 0 &&
+            resolved.report_interval == 30 &&
             !resolved.rpc_url &&
             !resolved.cookie_file,
         "resolved config applies continuous default");
+
+    resolve_input.report_interval = 0;
+
+    const auto resolved_disabled_reporter =
+        ResolveMinerConfig(
+            resolve_input);
+
+    ok &= Check(
+        resolved_disabled_reporter.report_interval == 0,
+        "zero report interval disables periodic reporting");
 
     ok &= Check(
         ThrowsConfig([] {

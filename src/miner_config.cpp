@@ -108,6 +108,24 @@ std::uint64_t ParseMinerBlockLimit(
         "block limit");
 }
 
+std::uint32_t ParseMinerReportInterval(
+    std::string_view text)
+{
+    const std::uint64_t value =
+        ParseUnsigned(
+            text,
+            "report interval");
+
+    if (value >
+        std::numeric_limits<std::uint32_t>::max()) {
+        throw MinerConfigException(
+            "report interval is too large");
+    }
+
+    return static_cast<std::uint32_t>(
+        value);
+}
+
 MinerCommandLine ParseMinerCommandLine(
     const std::vector<std::string_view>& args)
 {
@@ -144,6 +162,7 @@ MinerCommandLine ParseMinerCommandLine(
             option == "--payout-address" ||
             option == "--threads" ||
             option == "--block-limit" ||
+            option == "--report-interval" ||
             option == "--rpc-url" ||
             option == "--cookie-file";
 
@@ -193,6 +212,10 @@ MinerCommandLine ParseMinerCommandLine(
             result.overrides.block_limit =
                 ParseMinerBlockLimit(
                     value);
+        } else if (option == "--report-interval") {
+            result.overrides.report_interval =
+                ParseMinerReportInterval(
+                    value);
         } else if (option == "--rpc-url") {
             result.overrides.rpc_url =
                 std::string{value};
@@ -227,6 +250,11 @@ MinerConfig MergeMinerConfig(
     if (overrides.block_limit) {
         base.block_limit =
             overrides.block_limit;
+    }
+
+    if (overrides.report_interval) {
+        base.report_interval =
+            overrides.report_interval;
     }
 
     if (overrides.rpc_url) {
@@ -290,6 +318,8 @@ ResolvedMinerConfig ResolveMinerConfig(
         *config.thread_count;
     resolved.block_limit =
         config.block_limit.value_or(0);
+    resolved.report_interval =
+        config.report_interval.value_or(30);
     resolved.rpc_url =
         config.rpc_url;
     resolved.cookie_file =
@@ -371,6 +401,10 @@ MinerConfig ParseMinerConfigText(
             } else if (key == "block_limit") {
                 config.block_limit =
                     ParseMinerBlockLimit(
+                        value);
+            } else if (key == "report_interval") {
+                config.report_interval =
+                    ParseMinerReportInterval(
                         value);
             } else if (key == "rpc_url") {
                 config.rpc_url =

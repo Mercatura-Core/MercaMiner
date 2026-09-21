@@ -28,6 +28,7 @@ struct MinerConfig
     std::optional<std::string> payout_address;
     std::optional<std::size_t> thread_count;
     std::optional<std::uint64_t> block_limit;
+    std::optional<std::uint32_t> report_interval;
     std::optional<std::string> rpc_url;
     std::optional<std::string> cookie_file;
 };
@@ -45,6 +46,7 @@ struct ResolvedMinerConfig
     std::string payout_address;
     std::size_t thread_count{};
     std::uint64_t block_limit{};
+    std::uint32_t report_interval{};
     std::optional<std::string> rpc_url;
     std::optional<std::string> cookie_file;
 };
@@ -53,6 +55,9 @@ std::size_t ParseMinerThreadCount(
     std::string_view text);
 
 std::uint64_t ParseMinerBlockLimit(
+    std::string_view text);
+
+std::uint32_t ParseMinerReportInterval(
     std::string_view text);
 
 MinerCommandLine ParseMinerCommandLine(

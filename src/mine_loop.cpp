@@ -28,6 +28,7 @@
 #include <filesystem>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -410,6 +411,7 @@ void PrintMiningUsage(
         << " [--payout-address <address>]"
         << " [--threads <count>]"
         << " [--block-limit <count>]"
+        << " [--report-interval <seconds>]"
         << " [--rpc-url <url>]"
         << " [--cookie-file <file>]\n"
         << "\nLegacy positional forms:\n"
@@ -422,7 +424,8 @@ void PrintMiningUsage(
         << " <block-count>\n"
         << "\nDefault config:"
         << " ~/.mercaminer/mercaminer.conf\n"
-        << "block-limit 0 means run continuously\n";
+        << "block-limit 0 means run continuously\n"
+        << "report-interval 0 disables periodic status\n";
 }
 
 struct StartupArguments
@@ -602,6 +605,9 @@ int main(int argc, char* argv[])
         const std::uint64_t block_limit =
             startup_config.block_limit;
 
+        const std::uint32_t report_interval =
+            startup_config.report_interval;
+
         if (network_name != "regtest") {
             std::osyncstream(std::cerr)
                 << "MercaMiner continuous mining is currently "
@@ -710,11 +716,21 @@ int main(int argc, char* argv[])
         mercaminer::MiningRuntimeStats
             runtime_stats;
 
-        mercaminer::RuntimeReporter reporter{
-            runtime_stats,
-            miner.WorkerCount(),
-            std::chrono::seconds{30},
-            std::cout};
+        std::unique_ptr<mercaminer::RuntimeReporter>
+            reporter;
+
+        if (report_interval != 0) {
+            reporter =
+                std::make_unique<
+                    mercaminer::RuntimeReporter>(
+                        runtime_stats,
+                        miner.WorkerCount(),
+                        std::chrono::seconds{
+                            static_cast<
+                                std::chrono::seconds::rep>(
+                                    report_interval)},
+                        std::cout);
+        }
 
         std::osyncstream(std::cout)
             << "MercaMiner continuous regtest mining started\n"
@@ -1033,7 +1049,9 @@ int main(int argc, char* argv[])
             }
         }
 
-        reporter.Stop();
+        if (reporter) {
+            reporter->Stop();
+        }
 
         if (shutdown_requested.load(
                 std::memory_order_relaxed)) {
