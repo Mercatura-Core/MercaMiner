@@ -13,6 +13,7 @@
 #include <parallel_miner.h>
 #include <rpc.h>
 #include <rpc_connection.h>
+#include <runtime_reporter.h>
 #include <scanner.h>
 #include <serialization.h>
 #include <uint256.h>
@@ -31,6 +32,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <syncstream>
 #include <system_error>
 #include <thread>
 #include <utility>
@@ -377,7 +379,7 @@ ResolvedSubmitOutcome SubmitCandidateReliably(
 
             throw;
         } catch (const mercaminer::RpcException& error) {
-            std::cerr
+            std::osyncstream(std::cerr)
                 << "RPC error while submitting or confirming "
                 << "solved candidate: "
                 << error.what()
@@ -398,7 +400,7 @@ ResolvedSubmitOutcome SubmitCandidateReliably(
 void PrintMiningUsage(
     const char* program)
 {
-    std::cerr
+    std::osyncstream(std::cerr)
         << "Usage:\n"
         << "  " << program << "\n"
         << "  " << program
@@ -601,7 +603,7 @@ int main(int argc, char* argv[])
             startup_config.block_limit;
 
         if (network_name != "regtest") {
-            std::cerr
+            std::osyncstream(std::cerr)
                 << "MercaMiner continuous mining is currently "
                 << "restricted to regtest.\n";
 
@@ -688,7 +690,7 @@ int main(int argc, char* argv[])
                 throw;
             }
 
-            std::cout
+            std::osyncstream(std::cout)
                 << "MercaMiner shutdown complete\n"
                 << "  accepted blocks: 0\n"
                 << "  aggregate hashes checked: 0\n";
@@ -705,10 +707,16 @@ int main(int argc, char* argv[])
         ParallelCandidateMiner miner{
             thread_count};
 
-        std::uint64_t accepted_blocks{0};
-        std::uint64_t total_hashes{0};
+        mercaminer::MiningRuntimeStats
+            runtime_stats;
 
-        std::cout
+        mercaminer::RuntimeReporter reporter{
+            runtime_stats,
+            miner.WorkerCount(),
+            std::chrono::seconds{30},
+            std::cout};
+
+        std::osyncstream(std::cout)
             << "MercaMiner continuous regtest mining started\n"
             << "  worker threads: "
             << miner.WorkerCount()
@@ -719,10 +727,10 @@ int main(int argc, char* argv[])
             << " MiB\n";
 
         if (block_limit == 0) {
-            std::cout
+            std::osyncstream(std::cout)
                 << "  block limit: continuous\n";
         } else {
-            std::cout
+            std::osyncstream(std::cout)
                 << "  block limit: "
                 << block_limit
                 << '\n';
@@ -731,7 +739,9 @@ int main(int argc, char* argv[])
         while (!shutdown_requested.load(
                    std::memory_order_relaxed) &&
                (block_limit == 0 ||
-                accepted_blocks < block_limit)) {
+                runtime_stats.accepted_blocks.load(
+                    std::memory_order_relaxed) <
+                    block_limit)) {
             try {
                 CurrentWork work =
                     FetchCurrentWork(
@@ -739,12 +749,16 @@ int main(int argc, char* argv[])
                         &shutdown_requested);
 
                 if (!TemplateMatchesTip(work)) {
-                    std::cout
+                    std::osyncstream(std::cout)
                         << "Template changed during fetch; "
                         << "refreshing\n";
 
                     continue;
                 }
+
+                runtime_stats.current_height.store(
+                    work.block_template.height,
+                    std::memory_order_relaxed);
 
                 MiningJob job{
                     work.block_template,
@@ -765,7 +779,7 @@ int main(int argc, char* argv[])
                     auto mining_candidate =
                         job.NextCandidate();
 
-                    std::cout
+                    std::osyncstream(std::cout)
                         << "Mining height "
                         << work.block_template.height
                         << " extranonce "
@@ -779,17 +793,8 @@ int main(int argc, char* argv[])
                             work.block_template.nonce_min,
                             work.block_template.nonce_max,
                             watcher.StaleFlag(),
-                            &shutdown_requested);
-
-                    if (result.hashes_checked >
-                        std::numeric_limits<std::uint64_t>::max() -
-                            total_hashes) {
-                        total_hashes =
-                            std::numeric_limits<std::uint64_t>::max();
-                    } else {
-                        total_hashes +=
-                            result.hashes_checked;
-                    }
+                            &shutdown_requested,
+                            &runtime_stats.completed_hashes);
 
                     if (result.status ==
                         ScanStatus::CANCELLED) {
@@ -798,7 +803,7 @@ int main(int argc, char* argv[])
 
                         if (shutdown_requested.load(
                                 std::memory_order_relaxed)) {
-                            std::cout
+                            std::osyncstream(std::cout)
                                 << "Shutdown requested; "
                                 << "stopping mining workers\n";
 
@@ -808,12 +813,16 @@ int main(int argc, char* argv[])
 
                         if (status ==
                             LongpollStatus::RPC_ERROR) {
-                            std::cerr
+                            std::osyncstream(std::cerr)
                                 << "Longpoll failed: "
                                 << watcher.Error()
                                 << "; refreshing template\n";
                         } else {
-                            std::cout
+                            runtime_stats.stale_work.fetch_add(
+                                1,
+                                std::memory_order_relaxed);
+
+                            std::osyncstream(std::cout)
                                 << "Longpoll reported new work; "
                                 << "discarding stale candidate\n";
                         }
@@ -830,12 +839,16 @@ int main(int argc, char* argv[])
 
                             if (status ==
                                 LongpollStatus::RPC_ERROR) {
-                                std::cerr
+                                std::osyncstream(std::cerr)
                                     << "Longpoll failed: "
                                     << watcher.Error()
                                     << "; refreshing template\n";
                             } else {
-                                std::cout
+                                runtime_stats.stale_work.fetch_add(
+                                    1,
+                                    std::memory_order_relaxed);
+
+                                std::osyncstream(std::cout)
                                     << "Longpoll reported new work; "
                                     << "refreshing template\n";
                             }
@@ -844,7 +857,7 @@ int main(int argc, char* argv[])
                             continue;
                         }
 
-                        std::cout
+                        std::osyncstream(std::cout)
                             << "Nonce range exhausted after "
                             << result.hashes_checked
                             << " hashes; advancing extranonce\n";
@@ -857,7 +870,7 @@ int main(int argc, char* argv[])
 
                     if (shutdown_requested.load(
                             std::memory_order_relaxed)) {
-                        std::cout
+                        std::osyncstream(std::cout)
                             << "Shutdown requested before submission; "
                             << "discarding solved candidate\n";
 
@@ -868,13 +881,17 @@ int main(int argc, char* argv[])
                     if (watcher.IsStale()) {
                         if (watcher_status ==
                             LongpollStatus::RPC_ERROR) {
-                            std::cerr
+                            std::osyncstream(std::cerr)
                                 << "Longpoll failed: "
                                 << watcher.Error()
                                 << "; discarding solved candidate "
                                 << "and refreshing template\n";
                         } else {
-                            std::cout
+                            runtime_stats.stale_work.fetch_add(
+                                1,
+                                std::memory_order_relaxed);
+
+                            std::osyncstream(std::cout)
                                 << "Template changed while solution "
                                 << "was being found; discarding "
                                 << "solved candidate\n";
@@ -904,7 +921,7 @@ int main(int argc, char* argv[])
 
                     if (outcome ==
                         ResolvedSubmitOutcome::CANCELLED) {
-                        std::cout
+                        std::osyncstream(std::cout)
                             << "Shutdown requested during submission\n";
 
                         refresh_template = true;
@@ -913,7 +930,11 @@ int main(int argc, char* argv[])
 
                     if (outcome ==
                         ResolvedSubmitOutcome::REJECTED) {
-                        std::cout
+                        runtime_stats.rejected_blocks.fetch_add(
+                            1,
+                            std::memory_order_relaxed);
+
+                        std::osyncstream(std::cout)
                             << "submitblock rejected candidate: "
                             << rejection
                             << "; refreshing template\n";
@@ -924,7 +945,11 @@ int main(int argc, char* argv[])
 
                     if (outcome ==
                         ResolvedSubmitOutcome::NOT_CURRENT_TIP) {
-                        std::cout
+                        runtime_stats.stale_work.fetch_add(
+                            1,
+                            std::memory_order_relaxed);
+
+                        std::osyncstream(std::cout)
                             << "Submitted candidate is not the "
                             << "current best tip; refreshing template\n";
 
@@ -932,9 +957,13 @@ int main(int argc, char* argv[])
                         continue;
                     }
 
-                    ++accepted_blocks;
+                    const std::uint64_t accepted_blocks =
+                        runtime_stats.accepted_blocks.fetch_add(
+                            1,
+                            std::memory_order_relaxed) +
+                        1;
 
-                    std::cout
+                    std::osyncstream(std::cout)
                         << "Block accepted\n"
                         << "  height: "
                         << work.block_template.height
@@ -958,7 +987,8 @@ int main(int argc, char* argv[])
                         << result.hashes_checked
                         << '\n'
                         << "  aggregate session hashes checked: "
-                        << total_hashes
+                        << runtime_stats.completed_hashes.load(
+                               std::memory_order_relaxed)
                         << '\n'
                         << "  accepted this session: "
                         << accepted_blocks
@@ -990,7 +1020,7 @@ int main(int argc, char* argv[])
                     break;
                 }
 
-                std::cerr
+                std::osyncstream(std::cerr)
                     << "RPC error: "
                     << error.what()
                     << "\nRetrying in 1 second\n";
@@ -1003,15 +1033,19 @@ int main(int argc, char* argv[])
             }
         }
 
+        reporter.Stop();
+
         if (shutdown_requested.load(
                 std::memory_order_relaxed)) {
-            std::cout
+            std::osyncstream(std::cout)
                 << "MercaMiner shutdown complete\n"
                 << "  accepted blocks: "
-                << accepted_blocks
+                << runtime_stats.accepted_blocks.load(
+                       std::memory_order_relaxed)
                 << '\n'
                 << "  aggregate hashes checked: "
-                << total_hashes
+                << runtime_stats.completed_hashes.load(
+                       std::memory_order_relaxed)
                 << '\n';
 
             const int signal =
@@ -1023,18 +1057,20 @@ int main(int argc, char* argv[])
                 : 0;
         }
 
-        std::cout
+        std::osyncstream(std::cout)
             << "Requested block count reached\n"
             << "  accepted blocks: "
-            << accepted_blocks
+            << runtime_stats.accepted_blocks.load(
+                   std::memory_order_relaxed)
             << '\n'
             << "  aggregate hashes checked: "
-            << total_hashes
+            << runtime_stats.completed_hashes.load(
+                   std::memory_order_relaxed)
             << '\n';
 
         return 0;
     } catch (const std::exception& error) {
-        std::cerr
+        std::osyncstream(std::cerr)
             << "MercaMiner continuous mining failed: "
             << error.what()
             << '\n';

@@ -534,6 +534,29 @@ add_test(
 )
 
 
+add_library(mercaminer_runtime_reporter
+    src/runtime_reporter.cpp
+)
+
+target_include_directories(mercaminer_runtime_reporter
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+add_executable(runtime_reporter_tests
+    tests/runtime_reporter_tests.cpp
+)
+
+target_link_libraries(runtime_reporter_tests
+    PRIVATE
+        mercaminer_runtime_reporter
+)
+
+add_test(
+    NAME runtime_reporter_tests
+    COMMAND runtime_reporter_tests
+)
+
 add_executable(mercaminer_mine_loop
     src/mine_loop.cpp
 )
@@ -548,4 +571,5 @@ target_link_libraries(mercaminer_mine_loop
         mercaminer_payout_address
         mercaminer_rpc
         mercaminer_rpc_connection
+        mercaminer_runtime_reporter
 )
