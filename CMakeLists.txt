@@ -334,6 +334,36 @@ add_test(
 )
 
 
+
+add_library(mercaminer_mining_job
+    src/mining_job.cpp
+)
+
+target_include_directories(mercaminer_mining_job
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(mercaminer_mining_job
+    PUBLIC
+        mercaminer_block_builder
+)
+
+add_executable(mining_job_tests
+    tests/mining_job_tests.cpp
+)
+
+target_link_libraries(mining_job_tests
+    PRIVATE
+        mercaminer_mining_job
+)
+
+add_test(
+    NAME mining_job_tests
+    COMMAND mining_job_tests
+)
+
+
 add_executable(mercaminer_mine_once
     src/mine_once.cpp
 )
@@ -341,6 +371,7 @@ add_executable(mercaminer_mine_once
 target_link_libraries(mercaminer_mine_once
     PRIVATE
         mercaminer_candidate_miner
+        mercaminer_mining_job
         mercaminer_network
         mercaminer_rpc
 )

@@ -6,6 +6,7 @@
 #include <candidate_miner.h>
 #include <gbt.h>
 #include <hash256.h>
+#include <mining_job.h>
 #include <network.h>
 #include <rpc.h>
 #include <scanner.h>
@@ -20,6 +21,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace {
 
@@ -138,22 +140,6 @@ std::uint64_t ParseRpcHeight(
         height);
 }
 
-mercaminer::Bytes HeightExtranonce(
-    std::uint64_t height)
-{
-    mercaminer::Bytes out(8);
-
-    for (std::size_t i = 0;
-         i < out.size();
-         ++i) {
-        out[i] =
-            static_cast<unsigned char>(
-                height >> (8 * i));
-    }
-
-    return out;
-}
-
 } // namespace
 
 int main(int argc, char* argv[])
@@ -163,6 +149,7 @@ int main(int argc, char* argv[])
     using mercaminer::BuildBlockCandidate;
     using mercaminer::FindNetworkIdentity;
     using mercaminer::MineBlockCandidate;
+    using mercaminer::MiningJob;
     using mercaminer::NonceScanner;
     using mercaminer::ParseBlockchainInfo;
     using mercaminer::ParseBlockTemplate;
@@ -264,15 +251,16 @@ int main(int argc, char* argv[])
                 "chain height plus one");
         }
 
-        const auto extranonce =
-            HeightExtranonce(
-                block_template.height);
+        MiningJob job{
+            block_template,
+            payout_script,
+            block_template.height};
+
+        auto work =
+            job.NextCandidate();
 
         auto candidate =
-            BuildBlockCandidate(
-                block_template,
-                payout_script,
-                extranonce);
+            std::move(work.candidate);
 
         NonceScanner scanner;
 
@@ -291,6 +279,9 @@ int main(int argc, char* argv[])
             << block_template.nonce_min
             << '-'
             << block_template.nonce_max
+            << '\n'
+            << "  extranonce: "
+            << work.extranonce
             << '\n'
             << "  candidate size: "
             << candidate.serialized_block.size()
