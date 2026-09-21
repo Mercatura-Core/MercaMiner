@@ -332,3 +332,15 @@ add_test(
     NAME candidate_miner_tests
     COMMAND candidate_miner_tests
 )
+
+
+add_executable(mercaminer_mine_once
+    src/mine_once.cpp
+)
+
+target_link_libraries(mercaminer_mine_once
+    PRIVATE
+        mercaminer_candidate_miner
+        mercaminer_network
+        mercaminer_rpc
+)
