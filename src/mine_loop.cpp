@@ -6,6 +6,7 @@
 #include <gbt.h>
 #include <hash256.h>
 #include <longpoll.h>
+#include <miner_config.h>
 #include <mining_job.h>
 #include <network.h>
 #include <payout_address.h>
@@ -19,18 +20,21 @@
 #include <nlohmann/json.hpp>
 
 #include <atomic>
-#include <charconv>
 #include <chrono>
 #include <csignal>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <iostream>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <thread>
 #include <utility>
+#include <vector>
 
 namespace {
 
@@ -180,57 +184,6 @@ std::uint64_t ParseRpcHeight(
         height);
 }
 
-std::size_t ParseThreadCount(
-    std::string_view text)
-{
-    std::uint64_t value{};
-
-    const char* begin = text.data();
-    const char* end =
-        text.data() + text.size();
-
-    const auto result =
-        std::from_chars(
-            begin,
-            end,
-            value);
-
-    if (result.ec != std::errc{} ||
-        result.ptr != end ||
-        value == 0 ||
-        value >
-            std::numeric_limits<std::size_t>::max()) {
-        throw std::runtime_error(
-            "thread count must be a positive integer");
-    }
-
-    return static_cast<std::size_t>(
-        value);
-}
-
-std::uint64_t ParseBlockLimit(
-    std::string_view text)
-{
-    std::uint64_t value{};
-
-    const char* begin = text.data();
-    const char* end =
-        text.data() + text.size();
-
-    const auto result =
-        std::from_chars(
-            begin,
-            end,
-            value);
-
-    if (result.ec != std::errc{} ||
-        result.ptr != end) {
-        throw std::runtime_error(
-            "block count must be an unsigned integer");
-    }
-
-    return value;
-}
 
 nlohmann::json TemplateRequest()
 {
@@ -442,6 +395,168 @@ ResolvedSubmitOutcome SubmitCandidateReliably(
     }
 }
 
+void PrintMiningUsage(
+    const char* program)
+{
+    std::cerr
+        << "Usage:\n"
+        << "  " << program << "\n"
+        << "  " << program
+        << " --config <file> [options]\n"
+        << "  " << program
+        << " [--network <network>]"
+        << " [--payout-address <address>]"
+        << " [--threads <count>]"
+        << " [--block-limit <count>]"
+        << " [--rpc-url <url>]"
+        << " [--cookie-file <file>]\n"
+        << "\nLegacy positional forms:\n"
+        << "  " << program
+        << " <network> <payout-address>"
+        << " <thread-count> <block-count>\n"
+        << "  " << program
+        << " <network> <rpc-url> <cookie-file>"
+        << " <payout-address> <thread-count>"
+        << " <block-count>\n"
+        << "\nDefault config:"
+        << " ~/.mercaminer/mercaminer.conf\n"
+        << "block-limit 0 means run continuously\n";
+}
+
+struct StartupArguments
+{
+    bool show_help{false};
+    mercaminer::ResolvedMinerConfig config;
+};
+
+StartupArguments ResolveStartupArguments(
+    int argc,
+    char* argv[])
+{
+    const bool legacy_positional =
+        (argc == 5 || argc == 7) &&
+        argc > 1 &&
+        !std::string_view{argv[1]}.starts_with("--");
+
+    if (legacy_positional) {
+        mercaminer::MinerConfig config;
+        config.network =
+            std::string{argv[1]};
+
+        const bool explicit_rpc =
+            argc == 7;
+
+        config.payout_address =
+            std::string{
+                argv[explicit_rpc ? 4 : 2]};
+
+        config.thread_count =
+            mercaminer::ParseMinerThreadCount(
+                argv[explicit_rpc ? 5 : 3]);
+
+        config.block_limit =
+            mercaminer::ParseMinerBlockLimit(
+                argv[explicit_rpc ? 6 : 4]);
+
+        if (explicit_rpc) {
+            config.rpc_url =
+                std::string{argv[2]};
+            config.cookie_file =
+                std::string{argv[3]};
+        }
+
+        return StartupArguments{
+            false,
+            mercaminer::ResolveMinerConfig(
+                config)};
+    }
+
+    if (argc > 1 &&
+        !std::string_view{argv[1]}.starts_with("--")) {
+        throw mercaminer::MinerConfigException(
+            "invalid positional arguments; use --help for supported forms");
+    }
+
+    std::vector<std::string_view> arguments;
+    arguments.reserve(
+        argc > 1
+            ? static_cast<std::size_t>(argc - 1)
+            : 0);
+
+    for (int i = 1; i < argc; ++i) {
+        arguments.emplace_back(
+            argv[i]);
+    }
+
+    const auto command_line =
+        mercaminer::ParseMinerCommandLine(
+            arguments);
+
+    if (command_line.show_help) {
+        return StartupArguments{
+            true,
+            {}};
+    }
+
+    mercaminer::MinerConfig config;
+
+    if (command_line.config_file) {
+        config =
+            mercaminer::LoadMinerConfigFile(
+                *command_line.config_file);
+    } else {
+        const bool require_default =
+            arguments.empty();
+
+        std::optional<std::filesystem::path>
+            default_path;
+
+        try {
+            default_path =
+                mercaminer::DefaultMinerConfigPath();
+        } catch (
+            const mercaminer::MinerConfigException&) {
+            if (require_default) {
+                throw;
+            }
+        }
+
+        if (default_path) {
+            std::error_code error;
+            const bool exists =
+                std::filesystem::exists(
+                    *default_path,
+                    error);
+
+            if (error) {
+                throw mercaminer::MinerConfigException(
+                    "unable to inspect default MercaMiner configuration file: " +
+                    default_path->string());
+            }
+
+            if (exists) {
+                config =
+                    mercaminer::LoadMinerConfigFile(
+                        *default_path);
+            } else if (require_default) {
+                throw mercaminer::MinerConfigException(
+                    "default MercaMiner configuration file not found: " +
+                    default_path->string());
+            }
+        }
+    }
+
+    config =
+        mercaminer::MergeMinerConfig(
+            std::move(config),
+            command_line.overrides);
+
+    return StartupArguments{
+        false,
+        mercaminer::ResolveMinerConfig(
+            config)};
+}
+
 } // namespace
 
 int main(int argc, char* argv[])
@@ -458,43 +573,40 @@ int main(int argc, char* argv[])
     using mercaminer::ScanStatus;
     using mercaminer::ValidateNetworkIdentity;
 
-    if (argc != 5 && argc != 7) {
-        std::cerr
-            << "Usage:\n"
-            << "  " << argv[0]
-            << " <network> <payout-address>"
-            << " <thread-count> <block-count>\n"
-            << "  " << argv[0]
-            << " <network> <rpc-url> <cookie-file>"
-            << " <payout-address> <thread-count>"
-            << " <block-count>\n"
-            << "thread-count must be at least 1\n"
-            << "block-count 0 means run continuously\n";
-
-        return 2;
-    }
-
-    const std::string network_name{argv[1]};
-    const bool explicit_rpc = argc == 7;
-    const std::string payout_address{
-        argv[explicit_rpc ? 4 : 2]};
-
-    if (network_name != "regtest") {
-        std::cerr
-            << "MercaMiner continuous mining is currently "
-            << "restricted to regtest.\n";
-
-        return 2;
-    }
-
     try {
+        const StartupArguments startup =
+            ResolveStartupArguments(
+                argc,
+                argv);
+
+        if (startup.show_help) {
+            PrintMiningUsage(
+                argv[0]);
+            return 0;
+        }
+
+        const auto& startup_config =
+            startup.config;
+
+        const std::string& network_name =
+            startup_config.network;
+
+        const std::string& payout_address =
+            startup_config.payout_address;
+
         const std::size_t thread_count =
-            ParseThreadCount(
-                argv[explicit_rpc ? 5 : 3]);
+            startup_config.thread_count;
 
         const std::uint64_t block_limit =
-            ParseBlockLimit(
-                argv[explicit_rpc ? 6 : 4]);
+            startup_config.block_limit;
+
+        if (network_name != "regtest") {
+            std::cerr
+                << "MercaMiner continuous mining is currently "
+                << "restricted to regtest.\n";
+
+            return 2;
+        }
 
         g_shutdown_signal = 0;
 
@@ -522,10 +634,10 @@ int main(int argc, char* argv[])
         }
 
         const RpcConnectionSettings connection =
-            explicit_rpc
+            startup_config.rpc_url
                 ? RpcConnectionSettings{
-                      argv[2],
-                      argv[3]}
+                      *startup_config.rpc_url,
+                      *startup_config.cookie_file}
                 : mercaminer::DefaultLocalRpcConnection(
                       *network);
 

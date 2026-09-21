@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace mercaminer {
 
@@ -31,11 +32,38 @@ struct MinerConfig
     std::optional<std::string> cookie_file;
 };
 
+struct MinerCommandLine
+{
+    std::optional<std::filesystem::path> config_file;
+    MinerConfig overrides;
+    bool show_help{false};
+};
+
+struct ResolvedMinerConfig
+{
+    std::string network;
+    std::string payout_address;
+    std::size_t thread_count{};
+    std::uint64_t block_limit{};
+    std::optional<std::string> rpc_url;
+    std::optional<std::string> cookie_file;
+};
+
 std::size_t ParseMinerThreadCount(
     std::string_view text);
 
 std::uint64_t ParseMinerBlockLimit(
     std::string_view text);
+
+MinerCommandLine ParseMinerCommandLine(
+    const std::vector<std::string_view>& args);
+
+MinerConfig MergeMinerConfig(
+    MinerConfig base,
+    const MinerConfig& overrides);
+
+ResolvedMinerConfig ResolveMinerConfig(
+    const MinerConfig& config);
 
 MinerConfig ParseMinerConfigText(
     std::string_view text);

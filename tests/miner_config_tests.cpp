@@ -39,10 +39,14 @@ bool ThrowsConfig(Callable&& callable)
 int main()
 {
     using mercaminer::LoadMinerConfigFile;
+    using mercaminer::MergeMinerConfig;
+    using mercaminer::MinerConfig;
     using mercaminer::MinerConfigPathForHome;
     using mercaminer::ParseMinerBlockLimit;
+    using mercaminer::ParseMinerCommandLine;
     using mercaminer::ParseMinerConfigText;
     using mercaminer::ParseMinerThreadCount;
+    using mercaminer::ResolveMinerConfig;
 
     bool ok{true};
 
@@ -198,6 +202,151 @@ cookie_file = /tmp/mercatura/regtest/.cookie
             (void)LoadMinerConfigFile(temp);
         }),
         "missing configuration file rejected");
+
+    const auto command_line =
+        ParseMinerCommandLine({
+            "--config",
+            "/tmp/custom.conf",
+            "--network",
+            "regtest",
+            "--payout-address",
+            "mcrt1zcli",
+            "--threads",
+            "8",
+            "--block-limit",
+            "3",
+            "--rpc-url",
+            "http://127.0.0.1:27773",
+            "--cookie-file",
+            "/tmp/regtest/.cookie"});
+
+    ok &= Check(
+        command_line.config_file &&
+            *command_line.config_file ==
+                std::filesystem::path{
+                    "/tmp/custom.conf"} &&
+            command_line.overrides.network &&
+            *command_line.overrides.network ==
+                "regtest" &&
+            command_line.overrides.payout_address &&
+            *command_line.overrides.payout_address ==
+                "mcrt1zcli" &&
+            command_line.overrides.thread_count &&
+            *command_line.overrides.thread_count == 8 &&
+            command_line.overrides.block_limit &&
+            *command_line.overrides.block_limit == 3 &&
+            command_line.overrides.rpc_url &&
+            command_line.overrides.cookie_file,
+        "command-line overrides parsed");
+
+    const auto help =
+        ParseMinerCommandLine(
+            {"--help"});
+
+    ok &= Check(
+        help.show_help,
+        "help option parsed");
+
+    ok &= Check(
+        ThrowsConfig([] {
+            (void)ParseMinerCommandLine(
+                {"--threads", "2",
+                 "--threads", "4"});
+        }),
+        "duplicate command-line option rejected");
+
+    ok &= Check(
+        ThrowsConfig([] {
+            (void)ParseMinerCommandLine(
+                {"--threads"});
+        }),
+        "missing command-line option value rejected");
+
+    ok &= Check(
+        ThrowsConfig([] {
+            (void)ParseMinerCommandLine(
+                {"--unknown", "value"});
+        }),
+        "unknown command-line option rejected");
+
+    ok &= Check(
+        ThrowsConfig([] {
+            (void)ParseMinerCommandLine(
+                {"regtest"});
+        }),
+        "unexpected positional argument rejected");
+
+    MinerConfig base;
+    base.network = "regtest";
+    base.payout_address = "mcrt1zbase";
+    base.thread_count = 2;
+    base.block_limit = 0;
+
+    MinerConfig overrides;
+    overrides.payout_address = "mcrt1zoverride";
+    overrides.thread_count = 6;
+    overrides.block_limit = 9;
+
+    const MinerConfig merged =
+        MergeMinerConfig(
+            base,
+            overrides);
+
+    ok &= Check(
+        merged.network &&
+            *merged.network == "regtest" &&
+            merged.payout_address &&
+            *merged.payout_address ==
+                "mcrt1zoverride" &&
+            merged.thread_count &&
+            *merged.thread_count == 6 &&
+            merged.block_limit &&
+            *merged.block_limit == 9,
+        "command-line values override config values");
+
+    MinerConfig resolve_input;
+    resolve_input.network = "regtest";
+    resolve_input.payout_address =
+        "mcrt1zresolved";
+    resolve_input.thread_count = 4;
+
+    const auto resolved =
+        ResolveMinerConfig(
+            resolve_input);
+
+    ok &= Check(
+        resolved.network == "regtest" &&
+            resolved.payout_address ==
+                "mcrt1zresolved" &&
+            resolved.thread_count == 4 &&
+            resolved.block_limit == 0 &&
+            !resolved.rpc_url &&
+            !resolved.cookie_file,
+        "resolved config applies continuous default");
+
+    ok &= Check(
+        ThrowsConfig([] {
+            MinerConfig incomplete;
+            incomplete.network = "regtest";
+            incomplete.thread_count = 2;
+            (void)ResolveMinerConfig(
+                incomplete);
+        }),
+        "missing required payout rejected");
+
+    ok &= Check(
+        ThrowsConfig([] {
+            MinerConfig incomplete;
+            incomplete.network = "regtest";
+            incomplete.payout_address =
+                "mcrt1ztest";
+            incomplete.thread_count = 2;
+            incomplete.rpc_url =
+                "http://127.0.0.1:27773";
+            (void)ResolveMinerConfig(
+                incomplete);
+        }),
+        "partial RPC override rejected");
 
     return ok ? 0 : 1;
 }

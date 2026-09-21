@@ -541,6 +541,7 @@ add_executable(mercaminer_mine_loop
 target_link_libraries(mercaminer_mine_loop
     PRIVATE
         mercaminer_longpoll
+        mercaminer_miner_config
         mercaminer_mining_job
         mercaminer_network
         mercaminer_parallel_miner
