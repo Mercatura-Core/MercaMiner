@@ -6,6 +6,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -42,6 +43,9 @@ int main()
 {
     using mercaminer::BuildRpcRequest;
     using mercaminer::ParseRpcResponse;
+    using mercaminer::RpcCallOptions;
+    using mercaminer::RpcCancelledException;
+    using mercaminer::RpcClient;
     using mercaminer::RpcCredentials;
     using mercaminer::RpcException;
 
@@ -183,6 +187,62 @@ int main()
                 200);
         }),
         "non-object JSON-RPC response rejected");
+
+    const RpcCallOptions default_options{};
+
+    ok &= Check(
+        default_options.timeout_seconds == 30 &&
+            default_options.cancelled == nullptr,
+        "default RPC call options preserve 30-second timeout");
+
+    RpcClient local_client{
+        "http://127.0.0.1:1",
+        RpcCredentials::FromUserPassword(
+            "test",
+            "test")};
+
+    bool negative_timeout_ok{false};
+
+    try {
+        RpcCallOptions options;
+        options.timeout_seconds = -1;
+
+        (void)local_client.Call(
+            "getblockcount",
+            nlohmann::json::array(),
+            options);
+    } catch (const RpcException& error) {
+        negative_timeout_ok =
+            std::string{error.what()} ==
+                "RPC timeout must not be negative";
+    }
+
+    ok &= Check(
+        negative_timeout_ok,
+        "negative RPC timeout rejected before transport");
+
+    std::atomic_bool cancelled{true};
+
+    bool preset_cancel_ok{false};
+
+    try {
+        RpcCallOptions options;
+        options.timeout_seconds = 0;
+        options.cancelled = &cancelled;
+
+        (void)local_client.Call(
+            "getblocktemplate",
+            nlohmann::json::array(),
+            options);
+    } catch (const RpcCancelledException& error) {
+        preset_cancel_ok =
+            std::string{error.what()} ==
+                "RPC request cancelled";
+    }
+
+    ok &= Check(
+        preset_cancel_ok,
+        "pre-cancelled RPC request aborts before transport");
 
     return ok ? 0 : 1;
 }

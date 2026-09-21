@@ -7,6 +7,7 @@
 
 #include <nlohmann/json_fwd.hpp>
 
+#include <atomic>
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
@@ -29,6 +30,23 @@ public:
 
 private:
     std::optional<int> m_code;
+};
+
+class RpcCancelledException : public RpcException
+{
+public:
+    using RpcException::RpcException;
+};
+
+struct RpcCallOptions
+{
+    // Zero disables the overall libcurl request timeout.
+    // Connection establishment retains its separate timeout.
+    long timeout_seconds{30};
+
+    // When non-null, an in-flight request aborts once this
+    // flag becomes true.
+    const std::atomic_bool* cancelled{nullptr};
 };
 
 struct RpcCredentials
@@ -62,6 +80,11 @@ public:
     nlohmann::json Call(
         std::string_view method,
         const nlohmann::json& params);
+
+    nlohmann::json Call(
+        std::string_view method,
+        const nlohmann::json& params,
+        const RpcCallOptions& options);
 
 private:
     std::string m_url;

@@ -98,6 +98,27 @@ std::string TrimLineEnding(std::string value)
     return value;
 }
 
+int TransferProgress(
+    void* context,
+    curl_off_t,
+    curl_off_t,
+    curl_off_t,
+    curl_off_t)
+{
+    if (context == nullptr) {
+        return 0;
+    }
+
+    const auto* cancelled =
+        static_cast<const std::atomic_bool*>(
+            context);
+
+    return cancelled->load(
+               std::memory_order_relaxed)
+        ? 1
+        : 0;
+}
+
 } // namespace
 
 RpcException::RpcException(
@@ -281,6 +302,29 @@ nlohmann::json RpcClient::Call(
     std::string_view method,
     const nlohmann::json& params)
 {
+    return Call(
+        method,
+        params,
+        RpcCallOptions{});
+}
+
+nlohmann::json RpcClient::Call(
+    std::string_view method,
+    const nlohmann::json& params,
+    const RpcCallOptions& options)
+{
+    if (options.timeout_seconds < 0) {
+        throw RpcException(
+            "RPC timeout must not be negative");
+    }
+
+    if (options.cancelled != nullptr &&
+        options.cancelled->load(
+            std::memory_order_relaxed)) {
+        throw RpcCancelledException(
+            "RPC request cancelled");
+    }
+
     const nlohmann::json request =
         BuildRpcRequest(
             ++m_next_id,
@@ -375,7 +419,22 @@ nlohmann::json RpcClient::Call(
 
     SetOption(
         CURLOPT_TIMEOUT,
-        30L);
+        options.timeout_seconds);
+
+    if (options.cancelled != nullptr) {
+        SetOption(
+            CURLOPT_NOPROGRESS,
+            0L);
+
+        SetOption(
+            CURLOPT_XFERINFOFUNCTION,
+            &TransferProgress);
+
+        SetOption(
+            CURLOPT_XFERINFODATA,
+            const_cast<std::atomic_bool*>(
+                options.cancelled));
+    }
 
     SetOption(
         CURLOPT_NOSIGNAL,
@@ -389,6 +448,14 @@ nlohmann::json RpcClient::Call(
         curl_easy_perform(curl.get());
 
     if (result != CURLE_OK) {
+        if (result == CURLE_ABORTED_BY_CALLBACK &&
+            options.cancelled != nullptr &&
+            options.cancelled->load(
+                std::memory_order_relaxed)) {
+            throw RpcCancelledException(
+                "RPC request cancelled");
+        }
+
         throw RpcException(
             std::string{"RPC transport error: "} +
             curl_easy_strerror(result));
