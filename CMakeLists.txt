@@ -240,3 +240,35 @@ add_test(
     NAME coinbase_tests
     COMMAND coinbase_tests
 )
+
+
+add_library(mercaminer_block_builder
+    src/block_builder.cpp
+)
+
+target_include_directories(mercaminer_block_builder
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(mercaminer_block_builder
+    PUBLIC
+        mercaminer_coinbase
+        mercaminer_gbt
+        mercaminer_block_primitives
+        mercaminer_core
+)
+
+add_executable(block_builder_tests
+    tests/block_builder_tests.cpp
+)
+
+target_link_libraries(block_builder_tests
+    PRIVATE
+        mercaminer_block_builder
+)
+
+add_test(
+    NAME block_builder_tests
+    COMMAND block_builder_tests
+)
