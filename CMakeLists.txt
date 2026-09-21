@@ -395,6 +395,16 @@ target_link_libraries(mercaminer_parallel_miner
         Threads::Threads
 )
 
+add_executable(mercaminer_benchmark
+    src/benchmark.cpp
+)
+
+target_link_libraries(mercaminer_benchmark
+    PRIVATE
+        mercaminer_parallel_miner
+)
+
+
 add_executable(parallel_miner_tests
     tests/parallel_miner_tests.cpp
 )
