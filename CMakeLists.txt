@@ -9,6 +9,9 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+find_package(CURL REQUIRED)
+find_package(nlohmann_json 3.10.5 REQUIRED)
+
 add_library(mercahash
     src/crypto/mercahash.cpp
     src/crypto/sha3.cpp
@@ -28,6 +31,21 @@ add_library(mercaminer_core
 target_include_directories(mercaminer_core
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+add_library(mercaminer_rpc
+    src/rpc.cpp
+)
+
+target_include_directories(mercaminer_rpc
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(mercaminer_rpc
+    PUBLIC
+        CURL::libcurl
+        nlohmann_json::nlohmann_json
 )
 
 add_executable(mercahash_vectors
@@ -58,7 +76,21 @@ target_link_libraries(target_tests
         mercaminer_core
 )
 
+add_executable(rpc_tests
+    tests/rpc_tests.cpp
+)
+
+target_link_libraries(rpc_tests
+    PRIVATE
+        mercaminer_rpc
+)
+
 enable_testing()
+
+add_test(
+    NAME rpc_tests
+    COMMAND rpc_tests
+)
 
 add_test(
     NAME mercahash_vectors
