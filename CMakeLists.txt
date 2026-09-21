@@ -380,6 +380,36 @@ target_link_libraries(mercaminer_mine_once
 
 find_package(Threads REQUIRED)
 
+add_library(mercaminer_parallel_miner
+    src/parallel_miner.cpp
+)
+
+target_include_directories(mercaminer_parallel_miner
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(mercaminer_parallel_miner
+    PUBLIC
+        mercaminer_candidate_miner
+        Threads::Threads
+)
+
+add_executable(parallel_miner_tests
+    tests/parallel_miner_tests.cpp
+)
+
+target_link_libraries(parallel_miner_tests
+    PRIVATE
+        mercaminer_parallel_miner
+)
+
+add_test(
+    NAME parallel_miner_tests
+    COMMAND parallel_miner_tests
+)
+
+
 add_library(mercaminer_longpoll
     src/longpoll.cpp
 )

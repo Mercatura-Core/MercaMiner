@@ -10,13 +10,8 @@
 
 namespace mercaminer {
 
-ScanResult MineBlockCandidate(
-    NonceScanner& scanner,
-    BlockCandidate& candidate,
-    const UInt256& target,
-    std::uint32_t nonce_begin,
-    std::uint32_t nonce_end,
-    const std::atomic_bool* cancelled)
+void ValidateBlockCandidateForMining(
+    const BlockCandidate& candidate)
 {
     if (candidate.serialized_block.size() <
         BlockHeader::SERIALIZED_SIZE) {
@@ -34,6 +29,32 @@ ScanResult MineBlockCandidate(
         throw std::invalid_argument(
             "candidate header does not match serialized block");
     }
+}
+
+void ApplySolvedNonce(
+    BlockCandidate& candidate,
+    std::uint32_t nonce)
+{
+    candidate.header.nonce = nonce;
+
+    const auto solved_header =
+        candidate.header.Serialize();
+
+    std::copy(
+        solved_header.begin(),
+        solved_header.end(),
+        candidate.serialized_block.begin());
+}
+
+ScanResult MineBlockCandidate(
+    NonceScanner& scanner,
+    BlockCandidate& candidate,
+    const UInt256& target,
+    std::uint32_t nonce_begin,
+    std::uint32_t nonce_end,
+    const std::atomic_bool* cancelled)
+{
+    ValidateBlockCandidateForMining(candidate);
 
     const ScanResult result =
         scanner.Scan(
@@ -47,16 +68,9 @@ ScanResult MineBlockCandidate(
         return result;
     }
 
-    candidate.header.nonce =
-        result.nonce;
-
-    const auto solved_header =
-        candidate.header.Serialize();
-
-    std::copy(
-        solved_header.begin(),
-        solved_header.end(),
-        candidate.serialized_block.begin());
+    ApplySolvedNonce(
+        candidate,
+        result.nonce);
 
     return result;
 }

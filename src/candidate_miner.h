@@ -13,6 +13,13 @@
 
 namespace mercaminer {
 
+void ValidateBlockCandidateForMining(
+    const BlockCandidate& candidate);
+
+void ApplySolvedNonce(
+    BlockCandidate& candidate,
+    std::uint32_t nonce);
+
 ScanResult MineBlockCandidate(
     NonceScanner& scanner,
     BlockCandidate& candidate,

@@ -22,7 +22,8 @@ ScanResult NonceScanner::Scan(
     const UInt256& target,
     std::uint32_t nonce_begin,
     std::uint32_t nonce_end,
-    const std::atomic_bool* cancelled)
+    const std::atomic_bool* cancelled,
+    const std::atomic_bool* cancelled_secondary)
 {
     if (nonce_begin > nonce_end) {
         throw std::invalid_argument(
@@ -34,8 +35,11 @@ ScanResult NonceScanner::Scan(
     std::uint64_t hashes_checked = 0;
 
     for (;;) {
-        if (cancelled != nullptr &&
-            cancelled->load(std::memory_order_relaxed)) {
+        if ((cancelled != nullptr &&
+             cancelled->load(std::memory_order_relaxed)) ||
+            (cancelled_secondary != nullptr &&
+             cancelled_secondary->load(
+                 std::memory_order_relaxed))) {
             return ScanResult{
                 ScanStatus::CANCELLED,
                 nonce,
