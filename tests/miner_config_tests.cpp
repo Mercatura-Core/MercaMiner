@@ -48,6 +48,7 @@ int main()
     using mercaminer::ParseMinerReportInterval;
     using mercaminer::ParseMinerThreadCount;
     using mercaminer::ResolveMinerConfig;
+    using mercaminer::SelectDefaultMinerThreadCount;
 
     bool ok{true};
 
@@ -87,13 +88,12 @@ cookie_file = /tmp/mercatura/regtest/.cookie
     const auto minimal =
         ParseMinerConfigText(
             "network=regtest\n"
-            "payout_address=mcrt1ztest\n"
-            "threads=2\n");
+            "payout_address=mcrt1ztest\n");
 
     ok &= Check(
         minimal.network &&
             minimal.payout_address &&
-            minimal.thread_count &&
+            !minimal.thread_count &&
             !minimal.block_limit &&
             !minimal.report_interval &&
             !minimal.rpc_url &&
@@ -116,6 +116,15 @@ cookie_file = /tmp/mercatura/regtest/.cookie
                 (void)ParseMinerThreadCount("abc");
             }),
         "invalid thread counts rejected");
+
+    ok &= Check(
+        SelectDefaultMinerThreadCount(0) == 1 &&
+            SelectDefaultMinerThreadCount(1) == 1 &&
+            SelectDefaultMinerThreadCount(4) == 4 &&
+            SelectDefaultMinerThreadCount(8) == 8 &&
+            SelectDefaultMinerThreadCount(12) == 8 &&
+            SelectDefaultMinerThreadCount(64) == 8,
+        "default thread selector clamps hardware concurrency");
 
     ok &= Check(
         ParseMinerBlockLimit("0") == 0 &&
@@ -368,6 +377,29 @@ cookie_file = /tmp/mercatura/regtest/.cookie
             !resolved.rpc_url &&
             !resolved.cookie_file,
         "resolved config applies continuous default");
+
+    MinerConfig auto_threads_input;
+    auto_threads_input.network = "regtest";
+    auto_threads_input.payout_address =
+        "mcrt1zauto";
+
+    const auto resolved_auto_threads =
+        ResolveMinerConfig(
+            auto_threads_input,
+            12);
+
+    ok &= Check(
+        resolved_auto_threads.thread_count == 8,
+        "resolved config applies bounded automatic thread default");
+
+    const auto resolved_unknown_hardware =
+        ResolveMinerConfig(
+            auto_threads_input,
+            0);
+
+    ok &= Check(
+        resolved_unknown_hardware.thread_count == 1,
+        "unknown hardware concurrency falls back to one thread");
 
     resolve_input.report_interval = 0;
 

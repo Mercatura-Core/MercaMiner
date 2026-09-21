@@ -54,6 +54,9 @@ struct ResolvedMinerConfig
 std::size_t ParseMinerThreadCount(
     std::string_view text);
 
+std::size_t SelectDefaultMinerThreadCount(
+    std::size_t hardware_threads);
+
 std::uint64_t ParseMinerBlockLimit(
     std::string_view text);
 
@@ -69,6 +72,10 @@ MinerConfig MergeMinerConfig(
 
 ResolvedMinerConfig ResolveMinerConfig(
     const MinerConfig& config);
+
+ResolvedMinerConfig ResolveMinerConfig(
+    const MinerConfig& config,
+    std::size_t hardware_threads);
 
 MinerConfig ParseMinerConfigText(
     std::string_view text);

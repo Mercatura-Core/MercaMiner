@@ -12,6 +12,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <thread>
 
 namespace mercaminer {
 namespace {
@@ -98,6 +99,20 @@ std::size_t ParseMinerThreadCount(
 
     return static_cast<std::size_t>(
         value);
+}
+
+std::size_t SelectDefaultMinerThreadCount(
+    std::size_t hardware_threads)
+{
+    constexpr std::size_t max_default_threads{8};
+
+    if (hardware_threads == 0) {
+        return 1;
+    }
+
+    return hardware_threads > max_default_threads
+        ? max_default_threads
+        : hardware_threads;
 }
 
 std::uint64_t ParseMinerBlockLimit(
@@ -273,6 +288,16 @@ MinerConfig MergeMinerConfig(
 ResolvedMinerConfig ResolveMinerConfig(
     const MinerConfig& config)
 {
+    return ResolveMinerConfig(
+        config,
+        static_cast<std::size_t>(
+            std::thread::hardware_concurrency()));
+}
+
+ResolvedMinerConfig ResolveMinerConfig(
+    const MinerConfig& config,
+    std::size_t hardware_threads)
+{
     if (!config.network ||
         config.network->empty()) {
         throw MinerConfigException(
@@ -285,10 +310,10 @@ ResolvedMinerConfig ResolveMinerConfig(
             "payout_address is required");
     }
 
-    if (!config.thread_count ||
+    if (config.thread_count &&
         *config.thread_count == 0) {
         throw MinerConfigException(
-            "threads is required and must be positive");
+            "threads must be positive when specified");
     }
 
     if (config.rpc_url.has_value() !=
@@ -315,7 +340,9 @@ ResolvedMinerConfig ResolveMinerConfig(
     resolved.payout_address =
         *config.payout_address;
     resolved.thread_count =
-        *config.thread_count;
+        config.thread_count.value_or(
+            SelectDefaultMinerThreadCount(
+                hardware_threads));
     resolved.block_limit =
         config.block_limit.value_or(0);
     resolved.report_interval =
