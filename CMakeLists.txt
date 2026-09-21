@@ -63,6 +63,31 @@ target_link_libraries(mercaminer_gbt
         nlohmann_json::nlohmann_json
 )
 
+add_library(mercaminer_network
+    src/network.cpp
+)
+
+target_include_directories(mercaminer_network
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(mercaminer_network
+    PUBLIC
+        mercaminer_gbt
+)
+
+add_executable(mercaminer_probe
+    src/node_probe.cpp
+)
+
+target_link_libraries(mercaminer_probe
+    PRIVATE
+        mercaminer_rpc
+        mercaminer_gbt
+        mercaminer_network
+)
+
 add_executable(mercahash_vectors
     tests/mercahash_vectors.cpp
 )
@@ -109,7 +134,21 @@ target_link_libraries(gbt_tests
         mercaminer_gbt
 )
 
+add_executable(network_tests
+    tests/network_tests.cpp
+)
+
+target_link_libraries(network_tests
+    PRIVATE
+        mercaminer_network
+)
+
 enable_testing()
+
+add_test(
+    NAME network_tests
+    COMMAND network_tests
+)
 
 add_test(
     NAME gbt_tests
