@@ -211,3 +211,32 @@ add_test(
     NAME block_primitives_tests
     COMMAND block_primitives_tests
 )
+
+
+add_library(mercaminer_coinbase
+    src/coinbase.cpp
+)
+
+target_include_directories(mercaminer_coinbase
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(mercaminer_coinbase
+    PUBLIC
+        mercaminer_block_primitives
+)
+
+add_executable(coinbase_tests
+    tests/coinbase_tests.cpp
+)
+
+target_link_libraries(coinbase_tests
+    PRIVATE
+        mercaminer_coinbase
+)
+
+add_test(
+    NAME coinbase_tests
+    COMMAND coinbase_tests
+)
