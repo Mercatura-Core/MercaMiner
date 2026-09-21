@@ -48,6 +48,21 @@ target_link_libraries(mercaminer_rpc
         nlohmann_json::nlohmann_json
 )
 
+add_library(mercaminer_gbt
+    src/gbt.cpp
+)
+
+target_include_directories(mercaminer_gbt
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(mercaminer_gbt
+    PUBLIC
+        mercaminer_core
+        nlohmann_json::nlohmann_json
+)
+
 add_executable(mercahash_vectors
     tests/mercahash_vectors.cpp
 )
@@ -85,7 +100,21 @@ target_link_libraries(rpc_tests
         mercaminer_rpc
 )
 
+add_executable(gbt_tests
+    tests/gbt_tests.cpp
+)
+
+target_link_libraries(gbt_tests
+    PRIVATE
+        mercaminer_gbt
+)
+
 enable_testing()
+
+add_test(
+    NAME gbt_tests
+    COMMAND gbt_tests
+)
 
 add_test(
     NAME rpc_tests
