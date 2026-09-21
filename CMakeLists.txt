@@ -101,6 +101,29 @@ target_link_libraries(mercaminer_network
         mercaminer_gbt
 )
 
+add_library(mercaminer_rpc_connection
+    src/rpc_connection.cpp
+)
+
+target_include_directories(mercaminer_rpc_connection
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(mercaminer_rpc_connection
+    PUBLIC
+        mercaminer_network
+)
+
+add_executable(rpc_connection_tests
+    tests/rpc_connection_tests.cpp
+)
+
+target_link_libraries(rpc_connection_tests
+    PRIVATE
+        mercaminer_rpc_connection
+)
+
 add_executable(mercaminer_probe
     src/node_probe.cpp
 )
@@ -110,6 +133,7 @@ target_link_libraries(mercaminer_probe
         mercaminer_rpc
         mercaminer_gbt
         mercaminer_network
+        mercaminer_rpc_connection
 )
 
 add_executable(mercahash_vectors
@@ -172,6 +196,11 @@ enable_testing()
 add_test(
     NAME payout_address_tests
     COMMAND payout_address_tests
+)
+
+add_test(
+    NAME rpc_connection_tests
+    COMMAND rpc_connection_tests
 )
 
 add_test(
@@ -404,6 +433,7 @@ target_link_libraries(mercaminer_mine_once
         mercaminer_network
         mercaminer_payout_address
         mercaminer_rpc
+        mercaminer_rpc_connection
 )
 
 
@@ -493,4 +523,5 @@ target_link_libraries(mercaminer_mine_loop
         mercaminer_parallel_miner
         mercaminer_payout_address
         mercaminer_rpc
+        mercaminer_rpc_connection
 )

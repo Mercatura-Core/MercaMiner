@@ -68,6 +68,7 @@ int main()
     ok &= Check(
         mainnet != nullptr &&
             mainnet->default_rpc_port == 27776 &&
+            mainnet->data_dir.empty() &&
             mainnet->genesis_hash ==
                 "cd797c78731d68a82b664b3e359a2e69"
                 "508ea873fe5747b686488589cc7d6f15",
@@ -76,6 +77,7 @@ int main()
     ok &= Check(
         testnet != nullptr &&
             testnet->default_rpc_port == 27775 &&
+            testnet->data_dir == "testnet" &&
             testnet->genesis_hash ==
                 "0cee25abd571760687efbebbe8741873"
                 "dc187ce46afe082282a47b2455320d73",
@@ -84,6 +86,7 @@ int main()
     ok &= Check(
         signet != nullptr &&
             signet->default_rpc_port == 27774 &&
+            signet->data_dir == "signet" &&
             signet->genesis_hash ==
                 "eebe2b23469b0d91056cc9240387ba7e"
                 "e601ce138160da3c508142e039e1f36b",
@@ -92,6 +95,7 @@ int main()
     ok &= Check(
         regtest != nullptr &&
             regtest->default_rpc_port == 27773 &&
+            regtest->data_dir == "regtest" &&
             regtest->genesis_hash ==
                 "8e2308efb3a16b126e69444329cc0ed8"
                 "1bea0596e99db1032ccd750e7028f685",

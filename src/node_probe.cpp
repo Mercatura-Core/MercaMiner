@@ -5,6 +5,7 @@
 #include <gbt.h>
 #include <network.h>
 #include <rpc.h>
+#include <rpc_connection.h>
 #include <uint256.h>
 
 #include <nlohmann/json.hpp>
@@ -50,20 +51,21 @@ int main(int argc, char* argv[])
     using mercaminer::ParseBlockchainInfo;
     using mercaminer::ParseBlockTemplate;
     using mercaminer::RpcClient;
+    using mercaminer::RpcConnectionSettings;
     using mercaminer::RpcCredentials;
     using mercaminer::ValidateNetworkIdentity;
 
-    if (argc != 4) {
+    if (argc != 2 && argc != 4) {
         std::cerr
-            << "Usage: " << argv[0]
+            << "Usage:\n"
+            << "  " << argv[0] << " <network>\n"
+            << "  " << argv[0]
             << " <network> <rpc-url> <cookie-file>\n";
 
         return 2;
     }
 
     const std::string network_name{argv[1]};
-    const std::string rpc_url{argv[2]};
-    const std::string cookie_file{argv[3]};
 
     const auto* network =
         FindNetworkIdentity(network_name);
@@ -77,10 +79,18 @@ int main(int argc, char* argv[])
     }
 
     try {
+        const RpcConnectionSettings connection =
+            argc == 2
+                ? mercaminer::DefaultLocalRpcConnection(
+                      *network)
+                : RpcConnectionSettings{
+                      argv[2],
+                      argv[3]};
+
         RpcClient rpc{
-            rpc_url,
+            connection.rpc_url,
             RpcCredentials::FromCookieFile(
-                cookie_file)};
+                connection.cookie_file)};
 
         const BlockchainInfo blockchain =
             ParseBlockchainInfo(

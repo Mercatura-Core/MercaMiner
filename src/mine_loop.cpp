@@ -11,6 +11,7 @@
 #include <payout_address.h>
 #include <parallel_miner.h>
 #include <rpc.h>
+#include <rpc_connection.h>
 #include <scanner.h>
 #include <serialization.h>
 #include <uint256.h>
@@ -451,15 +452,19 @@ int main(int argc, char* argv[])
     using mercaminer::MiningJob;
     using mercaminer::ParallelCandidateMiner;
     using mercaminer::RpcClient;
+    using mercaminer::RpcConnectionSettings;
     using mercaminer::RpcCredentials;
     using mercaminer::RpcException;
     using mercaminer::ScanStatus;
     using mercaminer::ValidateNetworkIdentity;
 
-    if (argc != 7) {
+    if (argc != 5 && argc != 7) {
         std::cerr
-            << "Usage: "
-            << argv[0]
+            << "Usage:\n"
+            << "  " << argv[0]
+            << " <network> <payout-address>"
+            << " <thread-count> <block-count>\n"
+            << "  " << argv[0]
             << " <network> <rpc-url> <cookie-file>"
             << " <payout-address> <thread-count>"
             << " <block-count>\n"
@@ -470,9 +475,9 @@ int main(int argc, char* argv[])
     }
 
     const std::string network_name{argv[1]};
-    const std::string rpc_url{argv[2]};
-    const std::string cookie_file{argv[3]};
-    const std::string payout_address{argv[4]};
+    const bool explicit_rpc = argc == 7;
+    const std::string payout_address{
+        argv[explicit_rpc ? 4 : 2]};
 
     if (network_name != "regtest") {
         std::cerr
@@ -484,10 +489,12 @@ int main(int argc, char* argv[])
 
     try {
         const std::size_t thread_count =
-            ParseThreadCount(argv[5]);
+            ParseThreadCount(
+                argv[explicit_rpc ? 5 : 3]);
 
         const std::uint64_t block_limit =
-            ParseBlockLimit(argv[6]);
+            ParseBlockLimit(
+                argv[explicit_rpc ? 6 : 4]);
 
         g_shutdown_signal = 0;
 
@@ -514,12 +521,20 @@ int main(int argc, char* argv[])
                 "unsupported Mercatura network");
         }
 
+        const RpcConnectionSettings connection =
+            explicit_rpc
+                ? RpcConnectionSettings{
+                      argv[2],
+                      argv[3]}
+                : mercaminer::DefaultLocalRpcConnection(
+                      *network);
+
         const RpcCredentials credentials =
             RpcCredentials::FromCookieFile(
-                cookie_file);
+                connection.cookie_file);
 
         RpcClient rpc{
-            rpc_url,
+            connection.rpc_url,
             credentials};
 
         mercaminer::Bytes payout_script;
@@ -625,7 +640,7 @@ int main(int argc, char* argv[])
                     work.block_template.height};
 
                 LongpollWatcher watcher{
-                    rpc_url,
+                    connection.rpc_url,
                     credentials,
                     work.block_template.longpoll_id};
 

@@ -23,6 +23,7 @@ struct NetworkIdentity
 {
     std::string_view chain;
     std::uint16_t default_rpc_port;
+    std::string_view data_dir;
     std::string_view genesis_hash;
 };
 

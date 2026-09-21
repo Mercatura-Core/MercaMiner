@@ -10,6 +10,7 @@
 #include <network.h>
 #include <payout_address.h>
 #include <rpc.h>
+#include <rpc_connection.h>
 #include <scanner.h>
 #include <serialization.h>
 #include <uint256.h>
@@ -109,14 +110,17 @@ int main(int argc, char* argv[])
     using mercaminer::ParseBlockchainInfo;
     using mercaminer::ParseBlockTemplate;
     using mercaminer::RpcClient;
+    using mercaminer::RpcConnectionSettings;
     using mercaminer::RpcCredentials;
     using mercaminer::ScanStatus;
     using mercaminer::ValidateNetworkIdentity;
 
-    if (argc != 5) {
+    if (argc != 3 && argc != 5) {
         std::cerr
-            << "Usage: "
-            << argv[0]
+            << "Usage:\n"
+            << "  " << argv[0]
+            << " <network> <payout-address>\n"
+            << "  " << argv[0]
             << " <network> <rpc-url> <cookie-file>"
             << " <payout-address>\n";
 
@@ -124,9 +128,9 @@ int main(int argc, char* argv[])
     }
 
     const std::string network_name{argv[1]};
-    const std::string rpc_url{argv[2]};
-    const std::string cookie_file{argv[3]};
-    const std::string payout_address{argv[4]};
+    const bool explicit_rpc = argc == 5;
+    const std::string payout_address{
+        argv[explicit_rpc ? 4 : 2]};
 
     if (network_name != "regtest") {
         std::cerr
@@ -146,10 +150,18 @@ int main(int argc, char* argv[])
                 "unsupported Mercatura network");
         }
 
+        const RpcConnectionSettings connection =
+            explicit_rpc
+                ? RpcConnectionSettings{
+                      argv[2],
+                      argv[3]}
+                : mercaminer::DefaultLocalRpcConnection(
+                      *network);
+
         RpcClient rpc{
-            rpc_url,
+            connection.rpc_url,
             RpcCredentials::FromCookieFile(
-                cookie_file)};
+                connection.cookie_file)};
 
         const BlockchainInfo blockchain =
             ParseBlockchainInfo(

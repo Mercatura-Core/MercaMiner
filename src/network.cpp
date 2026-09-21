@@ -14,24 +14,28 @@ static constexpr std::array<NetworkIdentity, 4> NETWORKS{{
     {
         "main",
         27776,
+        "",
         "cd797c78731d68a82b664b3e359a2e69"
         "508ea873fe5747b686488589cc7d6f15"
     },
     {
         "test",
         27775,
+        "testnet",
         "0cee25abd571760687efbebbe8741873"
         "dc187ce46afe082282a47b2455320d73"
     },
     {
         "signet",
         27774,
+        "signet",
         "eebe2b23469b0d91056cc9240387ba7e"
         "e601ce138160da3c508142e039e1f36b"
     },
     {
         "regtest",
         27773,
+        "regtest",
         "8e2308efb3a16b126e69444329cc0ed8"
         "1bea0596e99db1032ccd750e7028f685"
     },
