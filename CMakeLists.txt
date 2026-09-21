@@ -124,6 +124,24 @@ target_link_libraries(rpc_connection_tests
         mercaminer_rpc_connection
 )
 
+add_library(mercaminer_miner_config
+    src/miner_config.cpp
+)
+
+target_include_directories(mercaminer_miner_config
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+add_executable(miner_config_tests
+    tests/miner_config_tests.cpp
+)
+
+target_link_libraries(miner_config_tests
+    PRIVATE
+        mercaminer_miner_config
+)
+
 add_executable(mercaminer_probe
     src/node_probe.cpp
 )
@@ -201,6 +219,11 @@ add_test(
 add_test(
     NAME rpc_connection_tests
     COMMAND rpc_connection_tests
+)
+
+add_test(
+    NAME miner_config_tests
+    COMMAND miner_config_tests
 )
 
 add_test(
