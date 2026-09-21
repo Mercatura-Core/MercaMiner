@@ -8,6 +8,7 @@
 #include <longpoll.h>
 #include <mining_job.h>
 #include <network.h>
+#include <parallel_miner.h>
 #include <rpc.h>
 #include <scanner.h>
 #include <serialization.h>
@@ -146,6 +147,34 @@ std::uint64_t ParseRpcHeight(
 
     return static_cast<std::uint64_t>(
         height);
+}
+
+std::size_t ParseThreadCount(
+    std::string_view text)
+{
+    std::uint64_t value{};
+
+    const char* begin = text.data();
+    const char* end =
+        text.data() + text.size();
+
+    const auto result =
+        std::from_chars(
+            begin,
+            end,
+            value);
+
+    if (result.ec != std::errc{} ||
+        result.ptr != end ||
+        value == 0 ||
+        value >
+            std::numeric_limits<std::size_t>::max()) {
+        throw std::runtime_error(
+            "thread count must be a positive integer");
+    }
+
+    return static_cast<std::size_t>(
+        value);
 }
 
 std::uint64_t ParseBlockLimit(
@@ -352,19 +381,21 @@ int main(int argc, char* argv[])
     using mercaminer::LongpollWatcher;
     using mercaminer::MineBlockCandidate;
     using mercaminer::MiningJob;
-    using mercaminer::NonceScanner;
+    using mercaminer::ParallelCandidateMiner;
     using mercaminer::RpcClient;
     using mercaminer::RpcCredentials;
     using mercaminer::RpcException;
     using mercaminer::ScanStatus;
     using mercaminer::ValidateNetworkIdentity;
 
-    if (argc != 6) {
+    if (argc != 7) {
         std::cerr
             << "Usage: "
             << argv[0]
             << " <network> <rpc-url> <cookie-file>"
-            << " <payout-script-hex> <block-count>\n"
+            << " <payout-script-hex> <thread-count>"
+            << " <block-count>\n"
+            << "thread-count must be at least 1\n"
             << "block-count 0 means run continuously\n";
 
         return 2;
@@ -384,8 +415,11 @@ int main(int argc, char* argv[])
     }
 
     try {
+        const std::size_t thread_count =
+            ParseThreadCount(argv[5]);
+
         const std::uint64_t block_limit =
-            ParseBlockLimit(argv[5]);
+            ParseBlockLimit(argv[6]);
 
         const auto payout_script =
             ParseHex(payout_hex);
@@ -430,13 +464,21 @@ int main(int argc, char* argv[])
             initial_blockchain,
             live_genesis);
 
-        NonceScanner scanner;
+        ParallelCandidateMiner miner{
+            thread_count};
 
         std::uint64_t accepted_blocks{0};
         std::uint64_t total_hashes{0};
 
         std::cout
-            << "MercaMiner continuous regtest mining started\n";
+            << "MercaMiner continuous regtest mining started\n"
+            << "  worker threads: "
+            << miner.WorkerCount()
+            << '\n'
+            << "  scratchpad memory: "
+            << (miner.ScratchpadBytes() /
+                (1024ULL * 1024ULL))
+            << " MiB\n";
 
         if (block_limit == 0) {
             std::cout
@@ -487,8 +529,7 @@ int main(int argc, char* argv[])
                         << '\n';
 
                     const auto result =
-                        MineBlockCandidate(
-                            scanner,
+                        miner.Mine(
                             mining_candidate.candidate,
                             work.block_template.target,
                             work.block_template.nonce_min,
@@ -635,10 +676,13 @@ int main(int argc, char* argv[])
                         << "  block hash: "
                         << expected_block_hash.ToHexBE()
                         << '\n'
-                        << "  block hashes checked: "
+                        << "  active workers: "
+                        << result.active_workers
+                        << '\n'
+                        << "  aggregate block hashes checked: "
                         << result.hashes_checked
                         << '\n'
-                        << "  session hashes checked: "
+                        << "  aggregate session hashes checked: "
                         << total_hashes
                         << '\n'
                         << "  accepted this session: "
@@ -671,7 +715,7 @@ int main(int argc, char* argv[])
             << "  accepted blocks: "
             << accepted_blocks
             << '\n'
-            << "  total hashes checked: "
+            << "  aggregate hashes checked: "
             << total_hashes
             << '\n';
 
