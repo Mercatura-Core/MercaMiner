@@ -272,3 +272,33 @@ add_test(
     NAME block_builder_tests
     COMMAND block_builder_tests
 )
+
+
+add_library(mercaminer_scanner
+    src/scanner.cpp
+)
+
+target_include_directories(mercaminer_scanner
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+target_link_libraries(mercaminer_scanner
+    PUBLIC
+        mercahash
+        mercaminer_core
+)
+
+add_executable(scanner_tests
+    tests/scanner_tests.cpp
+)
+
+target_link_libraries(scanner_tests
+    PRIVATE
+        mercaminer_scanner
+)
+
+add_test(
+    NAME scanner_tests
+    COMMAND scanner_tests
+)
