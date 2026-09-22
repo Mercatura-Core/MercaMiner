@@ -52,6 +52,7 @@ int main()
 {
     using mercaminer::BlockchainInfo;
     using mercaminer::FindNetworkIdentity;
+    using mercaminer::SupportsDirectPowMining;
     using mercaminer::ValidateNetworkIdentity;
 
     bool ok{true};
@@ -109,9 +110,16 @@ int main()
         FindNetworkIdentity("unknown") == nullptr,
         "unknown network rejected");
 
-    if (!regtest) {
+    if (!mainnet || !testnet || !signet || !regtest) {
         return 1;
     }
+
+    ok &= Check(
+        SupportsDirectPowMining(*mainnet) &&
+            SupportsDirectPowMining(*testnet) &&
+            SupportsDirectPowMining(*regtest) &&
+            !SupportsDirectPowMining(*signet),
+        "direct PoW mining capability policy");
 
     BlockchainInfo blockchain;
     blockchain.chain = "regtest";

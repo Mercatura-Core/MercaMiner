@@ -629,12 +629,21 @@ int main(int argc, char* argv[])
         const std::uint32_t report_interval =
             startup_config.report_interval;
 
-        if (network_name != "regtest") {
-            std::osyncstream(std::cerr)
-                << "MercaMiner continuous mining is currently "
-                << "restricted to regtest.\n";
+        const auto* network =
+            FindNetworkIdentity(
+                network_name);
 
-            return 2;
+        if (network == nullptr) {
+            throw mercaminer::MinerConfigException(
+                "unsupported Mercatura network '" +
+                network_name + "'");
+        }
+
+        if (!mercaminer::SupportsDirectPowMining(
+                *network)) {
+            throw mercaminer::MinerConfigException(
+                "Mercatura signet mining is not supported "
+                "because signet challenge solutions are not implemented");
         }
 
         g_shutdown_signal = 0;
@@ -652,15 +661,6 @@ int main(int argc, char* argv[])
         std::atomic_bool shutdown_requested{false};
         ShutdownMonitor shutdown_monitor{
             shutdown_requested};
-
-        const auto* network =
-            FindNetworkIdentity(
-                network_name);
-
-        if (network == nullptr) {
-            throw std::runtime_error(
-                "unsupported Mercatura network");
-        }
 
         const RpcConnectionSettings connection =
             startup_config.rpc_url

@@ -55,6 +55,15 @@ FindNetworkIdentity(std::string_view chain) noexcept
     return nullptr;
 }
 
+bool SupportsDirectPowMining(
+    const NetworkIdentity& network) noexcept
+{
+    return
+        network.chain == "main" ||
+        network.chain == "test" ||
+        network.chain == "regtest";
+}
+
 void ValidateNetworkIdentity(
     const NetworkIdentity& expected,
     const BlockchainInfo& blockchain,

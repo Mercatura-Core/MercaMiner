@@ -30,6 +30,9 @@ struct NetworkIdentity
 const NetworkIdentity*
 FindNetworkIdentity(std::string_view chain) noexcept;
 
+bool SupportsDirectPowMining(
+    const NetworkIdentity& network) noexcept;
+
 void ValidateNetworkIdentity(
     const NetworkIdentity& expected,
     const BlockchainInfo& blockchain,
