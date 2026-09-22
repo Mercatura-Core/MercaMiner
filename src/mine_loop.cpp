@@ -316,6 +316,7 @@ struct CurrentWork
 
 CurrentWork FetchCurrentWork(
     mercaminer::RpcClient& rpc,
+    const mercaminer::NetworkIdentity& network,
     const std::atomic_bool* cancelled)
 {
     const auto options =
@@ -337,6 +338,10 @@ CurrentWork FetchCurrentWork(
                 nlohmann::json::array(
                     {TemplateRequest()}),
                 options));
+
+    mercaminer::ValidateProofOfWorkTarget(
+        network,
+        work.block_template.target);
 
     return work;
 }
@@ -901,6 +906,7 @@ int main(int argc, char* argv[])
                 CurrentWork work =
                     FetchCurrentWork(
                         rpc,
+                        *network,
                         &shutdown_requested);
 
                 if (!TemplateMatchesTip(work)) {

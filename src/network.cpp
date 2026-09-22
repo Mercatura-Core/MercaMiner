@@ -16,28 +16,32 @@ static constexpr std::array<NetworkIdentity, 4> NETWORKS{{
         27776,
         "",
         "cd797c78731d68a82b664b3e359a2e69"
-        "508ea873fe5747b686488589cc7d6f15"
+        "508ea873fe5747b686488589cc7d6f15",
+        "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
     },
     {
         "test",
         27775,
         "testnet",
         "0cee25abd571760687efbebbe8741873"
-        "dc187ce46afe082282a47b2455320d73"
+        "dc187ce46afe082282a47b2455320d73",
+        "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
     },
     {
         "signet",
         27774,
         "signet",
         "eebe2b23469b0d91056cc9240387ba7e"
-        "e601ce138160da3c508142e039e1f36b"
+        "e601ce138160da3c508142e039e1f36b",
+        "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
     },
     {
         "regtest",
         27773,
         "regtest",
         "8e2308efb3a16b126e69444329cc0ed8"
-        "1bea0596e99db1032ccd750e7028f685"
+        "1bea0596e99db1032ccd750e7028f685",
+        "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
     },
 }};
 
@@ -91,6 +95,26 @@ void ValidateNetworkIdentity(
             "the expected Mercatura " +
             std::string{expected.chain} +
             " genesis");
+    }
+}
+
+void ValidateProofOfWorkTarget(
+    const NetworkIdentity& network,
+    const UInt256& target)
+{
+    const auto pow_limit =
+        UInt256::FromHexBE(network.pow_limit);
+
+    if (!pow_limit) {
+        throw NetworkException(
+            "Internal MercaMiner powLimit constant is invalid");
+    }
+
+    if (target > *pow_limit) {
+        throw NetworkException(
+            "proof-of-work target exceeds Mercatura " +
+            std::string{network.chain} +
+            " powLimit");
     }
 }
 

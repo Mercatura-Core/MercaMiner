@@ -54,6 +54,7 @@ int main()
     using mercaminer::FindNetworkIdentity;
     using mercaminer::SupportsDirectPowMining;
     using mercaminer::ValidateNetworkIdentity;
+    using mercaminer::ValidateProofOfWorkTarget;
 
     bool ok{true};
 
@@ -120,6 +121,47 @@ int main()
             SupportsDirectPowMining(*regtest) &&
             !SupportsDirectPowMining(*signet),
         "direct PoW mining capability policy");
+
+    static constexpr const char* POW_LIMIT =
+        "7fffffffffffffffffffffffffffffff"
+        "ffffffffffffffffffffffffffffffff";
+
+    ok &= Check(
+        mainnet->pow_limit == POW_LIMIT &&
+            testnet->pow_limit == POW_LIMIT &&
+            signet->pow_limit == POW_LIMIT &&
+            regtest->pow_limit == POW_LIMIT,
+        "Mercatura network powLimit constants pinned");
+
+    const auto pow_limit =
+        Parse256(POW_LIMIT);
+
+    const auto above_pow_limit =
+        Parse256(
+            "80000000000000000000000000000000"
+            "00000000000000000000000000000000");
+
+    bool exact_pow_limit_valid{true};
+
+    try {
+        ValidateProofOfWorkTarget(
+            *regtest,
+            pow_limit);
+    } catch (...) {
+        exact_pow_limit_valid = false;
+    }
+
+    ok &= Check(
+        exact_pow_limit_valid,
+        "target equal to powLimit accepted");
+
+    ok &= Check(
+        ThrowsNetwork([&] {
+            ValidateProofOfWorkTarget(
+                *regtest,
+                above_pow_limit);
+        }),
+        "target above powLimit rejected");
 
     BlockchainInfo blockchain;
     blockchain.chain = "regtest";

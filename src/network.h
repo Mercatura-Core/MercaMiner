@@ -25,6 +25,7 @@ struct NetworkIdentity
     std::uint16_t default_rpc_port;
     std::string_view data_dir;
     std::string_view genesis_hash;
+    std::string_view pow_limit;
 };
 
 const NetworkIdentity*
@@ -37,6 +38,10 @@ void ValidateNetworkIdentity(
     const NetworkIdentity& expected,
     const BlockchainInfo& blockchain,
     const UInt256& live_genesis);
+
+void ValidateProofOfWorkTarget(
+    const NetworkIdentity& network,
+    const UInt256& target);
 
 } // namespace mercaminer
 

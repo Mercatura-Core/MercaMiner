@@ -201,6 +201,10 @@ int main(int argc, char* argv[])
                     nlohmann::json::array(
                         {template_request})));
 
+        mercaminer::ValidateProofOfWorkTarget(
+            *network,
+            block_template.target);
+
         if (block_template.previous_block_hash !=
             blockchain.best_block_hash) {
             throw std::runtime_error(
