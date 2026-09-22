@@ -181,6 +181,93 @@ mercaminer::UInt256 ParseRpcHash(
     return *hash;
 }
 
+struct StartupRpcState
+{
+    mercaminer::RpcCredentials credentials;
+    mercaminer::RpcClient rpc;
+    mercaminer::Bytes payout_script;
+};
+
+std::optional<StartupRpcState> WaitForStartupRpc(
+    const mercaminer::NetworkIdentity& network,
+    const mercaminer::RpcConnectionSettings& connection,
+    std::string_view payout_address,
+    const std::atomic_bool* cancelled)
+{
+    for (;;) {
+        if (cancelled != nullptr &&
+            cancelled->load(
+                std::memory_order_relaxed)) {
+            return std::nullopt;
+        }
+
+        try {
+            mercaminer::RpcCredentials credentials =
+                mercaminer::RpcCredentials::FromCookieFile(
+                    connection.cookie_file);
+
+            mercaminer::RpcClient rpc{
+                connection.rpc_url,
+                credentials};
+
+            const auto options =
+                ShutdownRpcOptions(cancelled);
+
+            const auto initial_blockchain =
+                mercaminer::ParseBlockchainInfo(
+                    rpc.Call(
+                        "getblockchaininfo",
+                        nlohmann::json::array(),
+                        options));
+
+            const auto live_genesis =
+                ParseRpcHash(
+                    rpc.Call(
+                        "getblockhash",
+                        nlohmann::json::array({0}),
+                        options),
+                    "getblockhash 0");
+
+            mercaminer::ValidateNetworkIdentity(
+                network,
+                initial_blockchain,
+                live_genesis);
+
+            mercaminer::Bytes payout_script =
+                mercaminer::ResolvePayoutAddress(
+                    rpc,
+                    payout_address,
+                    options);
+
+            return StartupRpcState{
+                std::move(credentials),
+                std::move(rpc),
+                std::move(payout_script)};
+        } catch (
+            const mercaminer::RpcCancelledException&) {
+            if (cancelled != nullptr &&
+                cancelled->load(
+                    std::memory_order_relaxed)) {
+                return std::nullopt;
+            }
+
+            throw;
+        } catch (const mercaminer::RpcException& error) {
+            std::osyncstream(std::cerr)
+                << "RPC startup connection failed: "
+                << error.what()
+                << '\n'
+                << "Retrying startup in 1 second\n";
+
+            if (!InterruptibleSleep(
+                    std::chrono::seconds{1},
+                    cancelled)) {
+                return std::nullopt;
+            }
+        }
+    }
+}
+
 std::uint64_t ParseRpcHeight(
     const nlohmann::json& value,
     const char* description)
@@ -701,53 +788,14 @@ int main(int argc, char* argv[])
                 : mercaminer::DefaultLocalRpcConnection(
                       *network);
 
-        RpcCredentials credentials =
-            RpcCredentials::FromCookieFile(
-                connection.cookie_file);
-
-        RpcClient rpc{
-            connection.rpc_url,
-            credentials};
-
-        mercaminer::Bytes payout_script;
-
-        try {
-            const auto startup_options =
-                ShutdownRpcOptions(
-                    &shutdown_requested);
-
-            const auto initial_blockchain =
-                mercaminer::ParseBlockchainInfo(
-                    rpc.Call(
-                        "getblockchaininfo",
-                        nlohmann::json::array(),
-                        startup_options));
-
-            const auto live_genesis =
-                ParseRpcHash(
-                    rpc.Call(
-                        "getblockhash",
-                        nlohmann::json::array({0}),
-                        startup_options),
-                    "getblockhash 0");
-
-            ValidateNetworkIdentity(
+        auto startup_rpc =
+            WaitForStartupRpc(
                 *network,
-                initial_blockchain,
-                live_genesis);
+                connection,
+                payout_address,
+                &shutdown_requested);
 
-            payout_script =
-                mercaminer::ResolvePayoutAddress(
-                    rpc,
-                    payout_address,
-                    startup_options);
-        } catch (
-            const mercaminer::RpcCancelledException&) {
-            if (!shutdown_requested.load(
-                    std::memory_order_relaxed)) {
-                throw;
-            }
-
+        if (!startup_rpc) {
             const mercaminer::MiningRuntimeSnapshot
                 empty_stats{};
 
@@ -763,6 +811,18 @@ int main(int argc, char* argv[])
                 ? 128 + signal
                 : 0;
         }
+
+        RpcCredentials credentials =
+            std::move(
+                startup_rpc->credentials);
+
+        RpcClient rpc =
+            std::move(
+                startup_rpc->rpc);
+
+        mercaminer::Bytes payout_script =
+            std::move(
+                startup_rpc->payout_script);
 
         ParallelCandidateMiner miner{
             thread_count};
