@@ -5,7 +5,10 @@
 #include <network.h>
 #include <rpc_connection.h>
 
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <string>
 
 namespace {
 
@@ -32,12 +35,28 @@ bool ThrowsConnection(Callable&& callable)
     return false;
 }
 
+template <typename Callable>
+bool ThrowsRpc(Callable&& callable)
+{
+    try {
+        callable();
+    } catch (const mercaminer::RpcException&) {
+        return true;
+    }
+
+    return false;
+}
+
 } // namespace
 
 int main()
 {
     using mercaminer::FindNetworkIdentity;
     using mercaminer::LocalRpcConnectionForHome;
+    using mercaminer::ReloadRpcClientFromCookie;
+    using mercaminer::RpcClient;
+    using mercaminer::RpcConnectionSettings;
+    using mercaminer::RpcCredentials;
 
     bool ok{true};
 
@@ -104,6 +123,73 @@ int main()
                 "");
         }),
         "empty HOME rejected");
+
+    const std::filesystem::path cookie_path =
+        std::filesystem::temp_directory_path() /
+        "mercaminer_rpc_connection_test.cookie";
+
+    std::filesystem::remove(cookie_path);
+
+    {
+        std::ofstream cookie{cookie_path};
+        cookie << "__cookie__:token-a\n";
+    }
+
+    const RpcConnectionSettings refresh_connection{
+        "http://127.0.0.1:27773",
+        cookie_path.string()};
+
+    RpcCredentials refresh_credentials =
+        RpcCredentials::FromCookieFile(
+            cookie_path.string());
+
+    RpcClient refresh_rpc{
+        refresh_connection.rpc_url,
+        refresh_credentials};
+
+    {
+        std::ofstream cookie{
+            cookie_path,
+            std::ios::trunc};
+        cookie << "__cookie__:token-b\n";
+    }
+
+    const bool changed =
+        ReloadRpcClientFromCookie(
+            refresh_connection,
+            refresh_credentials,
+            refresh_rpc);
+
+    ok &= Check(
+        changed &&
+            refresh_credentials.basic_auth ==
+                "__cookie__:token-b",
+        "rotated RPC cookie reloaded");
+
+    const bool unchanged =
+        ReloadRpcClientFromCookie(
+            refresh_connection,
+            refresh_credentials,
+            refresh_rpc);
+
+    ok &= Check(
+        !unchanged &&
+            refresh_credentials.basic_auth ==
+                "__cookie__:token-b",
+        "unchanged RPC cookie not replaced");
+
+    std::filesystem::remove(cookie_path);
+
+    ok &= Check(
+        ThrowsRpc([&] {
+            (void)ReloadRpcClientFromCookie(
+                refresh_connection,
+                refresh_credentials,
+                refresh_rpc);
+        }) &&
+            refresh_credentials.basic_auth ==
+                "__cookie__:token-b",
+        "failed RPC cookie reload preserves credentials");
 
     return ok ? 0 : 1;
 }

@@ -114,6 +114,28 @@ ShutdownRpcOptions(
     return options;
 }
 
+void TryReloadRpcCookie(
+    const mercaminer::RpcConnectionSettings& connection,
+    mercaminer::RpcCredentials& credentials,
+    mercaminer::RpcClient& rpc)
+{
+    try {
+        if (mercaminer::ReloadRpcClientFromCookie(
+                connection,
+                credentials,
+                rpc)) {
+            std::osyncstream(std::cerr)
+                << "RPC cookie credentials changed; "
+                << "reloaded credentials\n";
+        }
+    } catch (const mercaminer::RpcException& error) {
+        std::osyncstream(std::cerr)
+            << "Unable to reload RPC cookie credentials: "
+            << error.what()
+            << "; retaining previous credentials\n";
+    }
+}
+
 std::string Hex(
     const mercaminer::Bytes& bytes)
 {
@@ -328,6 +350,8 @@ bool ConfirmAcceptedTip(
 
 ResolvedSubmitOutcome SubmitCandidateReliably(
     mercaminer::RpcClient& rpc,
+    const mercaminer::RpcConnectionSettings& connection,
+    mercaminer::RpcCredentials& credentials,
     const mercaminer::BlockCandidate& candidate,
     std::uint64_t expected_height,
     const mercaminer::UInt256& expected_hash,
@@ -384,7 +408,14 @@ ResolvedSubmitOutcome SubmitCandidateReliably(
                 << "RPC error while submitting or confirming "
                 << "solved candidate: "
                 << error.what()
-                << '\n'
+                << '\n';
+
+            TryReloadRpcCookie(
+                connection,
+                credentials,
+                rpc);
+
+            std::osyncstream(std::cerr)
                 << "Retrying the same solved candidate "
                 << "in 1 second\n";
 
@@ -670,7 +701,7 @@ int main(int argc, char* argv[])
                 : mercaminer::DefaultLocalRpcConnection(
                       *network);
 
-        const RpcCredentials credentials =
+        RpcCredentials credentials =
             RpcCredentials::FromCookieFile(
                 connection.cookie_file);
 
@@ -977,6 +1008,8 @@ int main(int argc, char* argv[])
                     const ResolvedSubmitOutcome outcome =
                         SubmitCandidateReliably(
                             rpc,
+                            connection,
+                            credentials,
                             mining_candidate.candidate,
                             work.block_template.height,
                             expected_block_hash,
@@ -1087,7 +1120,15 @@ int main(int argc, char* argv[])
                 std::osyncstream(std::cerr)
                     << "RPC error: "
                     << error.what()
-                    << "\nRetrying in 1 second\n";
+                    << '\n';
+
+                TryReloadRpcCookie(
+                    connection,
+                    credentials,
+                    rpc);
+
+                std::osyncstream(std::cerr)
+                    << "Retrying in 1 second\n";
 
                 if (!InterruptibleSleep(
                         std::chrono::seconds{1},

@@ -113,6 +113,7 @@ target_include_directories(mercaminer_rpc_connection
 target_link_libraries(mercaminer_rpc_connection
     PUBLIC
         mercaminer_network
+        mercaminer_rpc
 )
 
 add_executable(rpc_connection_tests

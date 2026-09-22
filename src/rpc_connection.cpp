@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <string>
+#include <utility>
 
 namespace mercaminer {
 
@@ -49,6 +50,33 @@ RpcConnectionSettings DefaultLocalRpcConnection(
     return LocalRpcConnectionForHome(
         network,
         home);
+}
+
+bool ReloadRpcClientFromCookie(
+    const RpcConnectionSettings& connection,
+    RpcCredentials& credentials,
+    RpcClient& rpc)
+{
+    RpcCredentials refreshed_credentials =
+        RpcCredentials::FromCookieFile(
+            connection.cookie_file);
+
+    if (refreshed_credentials.basic_auth ==
+        credentials.basic_auth) {
+        return false;
+    }
+
+    RpcClient refreshed_rpc{
+        connection.rpc_url,
+        refreshed_credentials};
+
+    credentials =
+        std::move(refreshed_credentials);
+
+    rpc =
+        std::move(refreshed_rpc);
+
+    return true;
 }
 
 } // namespace mercaminer

@@ -6,6 +6,7 @@
 #define MERCAMINER_RPC_CONNECTION_H
 
 #include <network.h>
+#include <rpc.h>
 
 #include <stdexcept>
 #include <string>
@@ -31,6 +32,11 @@ RpcConnectionSettings LocalRpcConnectionForHome(
 
 RpcConnectionSettings DefaultLocalRpcConnection(
     const NetworkIdentity& network);
+
+bool ReloadRpcClientFromCookie(
+    const RpcConnectionSettings& connection,
+    RpcCredentials& credentials,
+    RpcClient& rpc);
 
 } // namespace mercaminer
 
