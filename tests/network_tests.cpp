@@ -81,8 +81,8 @@ int main()
             testnet->default_rpc_port == 27775 &&
             testnet->data_dir == "testnet" &&
             testnet->genesis_hash ==
-                "0cee25abd571760687efbebbe8741873"
-                "dc187ce46afe082282a47b2455320d73",
+                "b92d6e7f680a111c3e5c91bf87aafab"
+                "ce04ecb16dcefde61a535cadf3941b51d",
         "testnet identity pinned");
 
     ok &= Check(
