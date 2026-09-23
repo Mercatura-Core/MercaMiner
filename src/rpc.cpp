@@ -284,6 +284,31 @@ nlohmann::json ParseRpcResponse(
     return *result_it;
 }
 
+SubmitBlockResult ClassifySubmitBlockResult(
+    const nlohmann::json& result,
+    std::string& rejection)
+{
+    rejection.clear();
+
+    if (result.is_null()) {
+        return SubmitBlockResult::NEEDS_TIP_CONFIRMATION;
+    }
+
+    if (!result.is_string()) {
+        throw std::runtime_error(
+            "submitblock returned unexpected non-null result");
+    }
+
+    rejection = result.get<std::string>();
+
+    if (rejection == "duplicate" ||
+        rejection == "inconclusive") {
+        return SubmitBlockResult::NEEDS_TIP_CONFIRMATION;
+    }
+
+    return SubmitBlockResult::REJECTED;
+}
+
 RpcClient::RpcClient(
     std::string url,
     RpcCredentials credentials)

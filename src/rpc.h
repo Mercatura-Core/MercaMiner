@@ -70,6 +70,16 @@ nlohmann::json ParseRpcResponse(
     std::string_view body,
     long http_status);
 
+enum class SubmitBlockResult
+{
+    NEEDS_TIP_CONFIRMATION,
+    REJECTED,
+};
+
+SubmitBlockResult ClassifySubmitBlockResult(
+    const nlohmann::json& result,
+    std::string& rejection);
+
 class RpcClient
 {
 public:

@@ -361,13 +361,6 @@ bool TemplateMatchesTip(
             work.blockchain.blocks + 1;
 }
 
-enum class SubmitOutcome
-{
-    ACCEPTED,
-    DUPLICATE,
-    REJECTED,
-};
-
 enum class ResolvedSubmitOutcome
 {
     ACCEPTED,
@@ -376,7 +369,7 @@ enum class ResolvedSubmitOutcome
     CANCELLED,
 };
 
-SubmitOutcome SubmitCandidate(
+mercaminer::SubmitBlockResult SubmitCandidate(
     mercaminer::RpcClient& rpc,
     const mercaminer::BlockCandidate& candidate,
     std::string& rejection,
@@ -389,24 +382,9 @@ SubmitOutcome SubmitCandidate(
                 {Hex(candidate.serialized_block)}),
             ShutdownRpcOptions(cancelled));
 
-    if (result.is_null()) {
-        return SubmitOutcome::ACCEPTED;
-    }
-
-    if (!result.is_string()) {
-        throw std::runtime_error(
-            "submitblock returned unexpected "
-            "non-null result");
-    }
-
-    rejection =
-        result.get<std::string>();
-
-    if (rejection == "duplicate") {
-        return SubmitOutcome::DUPLICATE;
-    }
-
-    return SubmitOutcome::REJECTED;
+    return mercaminer::ClassifySubmitBlockResult(
+        result,
+        rejection);
 }
 
 bool ConfirmAcceptedTip(
@@ -461,7 +439,7 @@ ResolvedSubmitOutcome SubmitCandidateReliably(
         try {
             rejection.clear();
 
-            const SubmitOutcome outcome =
+            const mercaminer::SubmitBlockResult outcome =
                 SubmitCandidate(
                     rpc,
                     candidate,
@@ -469,7 +447,7 @@ ResolvedSubmitOutcome SubmitCandidateReliably(
                     cancelled);
 
             if (outcome ==
-                SubmitOutcome::REJECTED) {
+                mercaminer::SubmitBlockResult::REJECTED) {
                 return
                     ResolvedSubmitOutcome::REJECTED;
             }

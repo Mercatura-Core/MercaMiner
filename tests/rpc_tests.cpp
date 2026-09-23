@@ -42,12 +42,14 @@ bool ThrowsRpc(Callable&& callable)
 int main()
 {
     using mercaminer::BuildRpcRequest;
+    using mercaminer::ClassifySubmitBlockResult;
     using mercaminer::ParseRpcResponse;
     using mercaminer::RpcCallOptions;
     using mercaminer::RpcCancelledException;
     using mercaminer::RpcClient;
     using mercaminer::RpcCredentials;
     using mercaminer::RpcException;
+    using mercaminer::SubmitBlockResult;
 
     bool ok{true};
 
@@ -128,6 +130,56 @@ int main()
     ok &= Check(
         result.at("chain") == "regtest",
         "successful JSON-RPC result parsed");
+
+    std::string submit_rejection{"stale"};
+
+    ok &= Check(
+        ClassifySubmitBlockResult(
+            nlohmann::json(nullptr),
+            submit_rejection) ==
+                SubmitBlockResult::NEEDS_TIP_CONFIRMATION &&
+            submit_rejection.empty(),
+        "submitblock null result requires tip confirmation");
+
+    ok &= Check(
+        ClassifySubmitBlockResult(
+            nlohmann::json("duplicate"),
+            submit_rejection) ==
+                SubmitBlockResult::NEEDS_TIP_CONFIRMATION &&
+            submit_rejection == "duplicate",
+        "submitblock duplicate requires tip confirmation");
+
+    ok &= Check(
+        ClassifySubmitBlockResult(
+            nlohmann::json("inconclusive"),
+            submit_rejection) ==
+                SubmitBlockResult::NEEDS_TIP_CONFIRMATION &&
+            submit_rejection == "inconclusive",
+        "submitblock inconclusive requires tip confirmation");
+
+    ok &= Check(
+        ClassifySubmitBlockResult(
+            nlohmann::json("high-hash"),
+            submit_rejection) ==
+                SubmitBlockResult::REJECTED &&
+            submit_rejection == "high-hash",
+        "submitblock validation failure remains rejected");
+
+    bool submit_nonstring_ok{false};
+
+    try {
+        (void)ClassifySubmitBlockResult(
+            nlohmann::json(1),
+            submit_rejection);
+    } catch (const std::runtime_error& error) {
+        submit_nonstring_ok =
+            std::string{error.what()} ==
+                "submitblock returned unexpected non-null result";
+    }
+
+    ok &= Check(
+        submit_nonstring_ok,
+        "unexpected submitblock result fails closed");
 
     bool rpc_error_ok{false};
 
