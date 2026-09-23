@@ -372,6 +372,20 @@ int main()
         }),
         "serialized-byte limit enforced");
 
+    BlockTemplate tiny_weight_limit =
+        block_template;
+
+    tiny_weight_limit.weight_limit = 1;
+
+    ok &= Check(
+        !ThrowsBuild([&] {
+            BuildBlockCandidate(
+                tiny_weight_limit,
+                payout,
+                extranonce);
+        }),
+        "compatibility weight limit does not constrain block capacity");
+
     BlockTemplate bad_aux =
         block_template;
 
