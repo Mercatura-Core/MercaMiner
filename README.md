@@ -10,6 +10,12 @@ MercaMiner v0.1 targets Linux x86_64 and solo RPC mining.
 
 GPU mining and pool/Stratum protocols are outside the scope of v0.1.
 
+## Step-by-step mining guide
+
+For complete setup and operating instructions, see:
+
+[MercaMiner v0.1 Step-by-Step Running Guide](doc/MercaMiner_v0.1_Running_Guide.docx)
+
 ## Status
 
 MercaMiner v0.1 implements the standalone Mercatura CPU-mining path,
