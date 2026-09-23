@@ -4,6 +4,7 @@
 
 #include <block_builder.h>
 #include <hash256.h>
+#include <merkle.h>
 
 #include <algorithm>
 #include <array>
@@ -140,6 +141,7 @@ int main()
     using mercaminer::BlockTemplate;
     using mercaminer::BuildBlockCandidate;
     using mercaminer::Bytes;
+    using mercaminer::ComputeMerkleRoot;
     using mercaminer::DoubleSha256;
     using mercaminer::TemplateTransaction;
 
@@ -268,6 +270,93 @@ int main()
             "592f71d0e6475a9884cac78fd445c437"
             "550cee7a0848243ba6b52f4821dea25f",
         "complete block serialization vector");
+
+    BlockTemplate transaction_template =
+        block_template;
+
+    TemplateTransaction witness_transaction;
+    witness_transaction.data_hex = "00";
+
+    // Deliberately keep txid distinct from wtxid so this test
+    // proves which identifier feeds the ordinary Merkle tree.
+    witness_transaction.txid =
+        Parse256(
+            "00000000000000000000000000000000"
+            "00000000000000000000000000000001");
+
+    // SHA256d of the raw GBT transaction bytes 0x00.
+    witness_transaction.wtxid =
+        Parse256(
+            "9a538906e6466ebd2617d321f71bc94e"
+            "56056ce213d366773699e28158e00614");
+
+    transaction_template.transactions = {
+        witness_transaction};
+
+    // BIP141 commitment for witness leaves:
+    // [zero coinbase leaf, witness_transaction.wtxid],
+    // with the 32-byte zero witness reserved value.
+    transaction_template.witness_commitment_hex =
+        "6a24aa21a9ed"
+        "26cb22fab8c881457de26c7b2011e6a0"
+        "16b231f2c6ae220321e4cf57ed06cd64";
+
+    const auto transaction_candidate =
+        BuildBlockCandidate(
+            transaction_template,
+            payout,
+            extranonce);
+
+    const auto expected_txid_merkle =
+        ComputeMerkleRoot({
+            transaction_candidate.coinbase.txid,
+            witness_transaction.txid}).root;
+
+    const auto wrong_wtxid_merkle =
+        ComputeMerkleRoot({
+            transaction_candidate.coinbase.txid,
+            witness_transaction.wtxid}).root;
+
+    ok &= Check(
+        transaction_candidate.header.merkle_root ==
+                expected_txid_merkle &&
+            transaction_candidate.header.merkle_root !=
+                wrong_wtxid_merkle,
+        "ordinary merkle tree uses GBT txid, not wtxid");
+
+    BlockTemplate bad_wtxid =
+        transaction_template;
+
+    bad_wtxid.transactions[0].wtxid =
+        Parse256(
+            "00000000000000000000000000000000"
+            "00000000000000000000000000000002");
+
+    ok &= Check(
+        ThrowsBuild([&] {
+            BuildBlockCandidate(
+                bad_wtxid,
+                payout,
+                extranonce);
+        }),
+        "GBT transaction data/wtxid mismatch rejected");
+
+    BlockTemplate bad_witness_commitment =
+        transaction_template;
+
+    bad_witness_commitment.witness_commitment_hex.back() =
+        bad_witness_commitment.witness_commitment_hex.back() == '0'
+            ? '1'
+            : '0';
+
+    ok &= Check(
+        ThrowsBuild([&] {
+            BuildBlockCandidate(
+                bad_witness_commitment,
+                payout,
+                extranonce);
+        }),
+        "GBT witness commitment mismatch rejected");
 
     BlockTemplate too_small =
         block_template;

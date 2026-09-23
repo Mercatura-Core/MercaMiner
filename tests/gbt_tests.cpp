@@ -297,6 +297,13 @@ int main()
             with_transaction.transactions[0].weight == 100,
         "transaction metadata parsed");
 
+    ok &= Check(
+        with_transaction.transactions[0].txid.ToHexBE() ==
+                std::string(64, '0') &&
+            with_transaction.transactions[0].wtxid.ToHexBE() ==
+                std::string(64, '1'),
+        "GBT txid and witness hash parsed separately");
+
     transaction_template["transactions"][0]
         ["depends"] =
             nlohmann::json::array({1});
