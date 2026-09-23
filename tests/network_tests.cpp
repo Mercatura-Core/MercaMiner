@@ -1,0 +1,216 @@
+// Copyright (c) 2026 The MercaMiner developers
+// Distributed under the MIT software license, see the accompanying
+// file COPYING or https://opensource.org/license/mit/.
+
+#include <network.h>
+
+#include <iostream>
+#include <stdexcept>
+#include <string>
+
+namespace {
+
+bool Check(bool condition, const char* name)
+{
+    if (!condition) {
+        std::cerr << "FAIL " << name << '\n';
+        return false;
+    }
+
+    std::cout << "PASS " << name << '\n';
+    return true;
+}
+
+mercaminer::UInt256 Parse256(const char* hex)
+{
+    const auto value =
+        mercaminer::UInt256::FromHexBE(hex);
+
+    if (!value) {
+        throw std::runtime_error(
+            "invalid test uint256 constant");
+    }
+
+    return *value;
+}
+
+template <typename Callable>
+bool ThrowsNetwork(Callable&& callable)
+{
+    try {
+        callable();
+    } catch (const mercaminer::NetworkException&) {
+        return true;
+    }
+
+    return false;
+}
+
+} // namespace
+
+int main()
+{
+    using mercaminer::BlockchainInfo;
+    using mercaminer::FindNetworkIdentity;
+    using mercaminer::SupportsDirectPowMining;
+    using mercaminer::ValidateNetworkIdentity;
+    using mercaminer::ValidateProofOfWorkTarget;
+
+    bool ok{true};
+
+    const auto* mainnet =
+        FindNetworkIdentity("main");
+    const auto* testnet =
+        FindNetworkIdentity("test");
+    const auto* signet =
+        FindNetworkIdentity("signet");
+    const auto* regtest =
+        FindNetworkIdentity("regtest");
+
+    ok &= Check(
+        mainnet != nullptr &&
+            mainnet->default_rpc_port == 27776 &&
+            mainnet->data_dir.empty() &&
+            mainnet->genesis_hash ==
+                "cd797c78731d68a82b664b3e359a2e69"
+                "508ea873fe5747b686488589cc7d6f15",
+        "mainnet identity pinned");
+
+    ok &= Check(
+        testnet != nullptr &&
+            testnet->default_rpc_port == 27775 &&
+            testnet->data_dir == "testnet" &&
+            testnet->genesis_hash ==
+                "b92d6e7f680a111c3e5c91bf87aafab"
+                "ce04ecb16dcefde61a535cadf3941b51d",
+        "testnet identity pinned");
+
+    ok &= Check(
+        signet != nullptr &&
+            signet->default_rpc_port == 27774 &&
+            signet->data_dir == "signet" &&
+            signet->genesis_hash ==
+                "eebe2b23469b0d91056cc9240387ba7e"
+                "e601ce138160da3c508142e039e1f36b",
+        "signet identity pinned");
+
+    ok &= Check(
+        regtest != nullptr &&
+            regtest->default_rpc_port == 27773 &&
+            regtest->data_dir == "regtest" &&
+            regtest->genesis_hash ==
+                "8e2308efb3a16b126e69444329cc0ed8"
+                "1bea0596e99db1032ccd750e7028f685",
+        "regtest identity pinned");
+
+    ok &= Check(
+        FindNetworkIdentity("testnet4") == nullptr,
+        "dormant testnet4 is not a supported miner network");
+
+    ok &= Check(
+        FindNetworkIdentity("unknown") == nullptr,
+        "unknown network rejected");
+
+    if (!mainnet || !testnet || !signet || !regtest) {
+        return 1;
+    }
+
+    ok &= Check(
+        SupportsDirectPowMining(*mainnet) &&
+            SupportsDirectPowMining(*testnet) &&
+            SupportsDirectPowMining(*regtest) &&
+            !SupportsDirectPowMining(*signet),
+        "direct PoW mining capability policy");
+
+    static constexpr const char* POW_LIMIT =
+        "7fffffffffffffffffffffffffffffff"
+        "ffffffffffffffffffffffffffffffff";
+
+    ok &= Check(
+        mainnet->pow_limit == POW_LIMIT &&
+            testnet->pow_limit == POW_LIMIT &&
+            signet->pow_limit == POW_LIMIT &&
+            regtest->pow_limit == POW_LIMIT,
+        "Mercatura network powLimit constants pinned");
+
+    const auto pow_limit =
+        Parse256(POW_LIMIT);
+
+    const auto above_pow_limit =
+        Parse256(
+            "80000000000000000000000000000000"
+            "00000000000000000000000000000000");
+
+    bool exact_pow_limit_valid{true};
+
+    try {
+        ValidateProofOfWorkTarget(
+            *regtest,
+            pow_limit);
+    } catch (...) {
+        exact_pow_limit_valid = false;
+    }
+
+    ok &= Check(
+        exact_pow_limit_valid,
+        "target equal to powLimit accepted");
+
+    ok &= Check(
+        ThrowsNetwork([&] {
+            ValidateProofOfWorkTarget(
+                *regtest,
+                above_pow_limit);
+        }),
+        "target above powLimit rejected");
+
+    BlockchainInfo blockchain;
+    blockchain.chain = "regtest";
+
+    const auto genesis =
+        Parse256(
+            "8e2308efb3a16b126e69444329cc0ed8"
+            "1bea0596e99db1032ccd750e7028f685");
+
+    bool valid_identity{true};
+
+    try {
+        ValidateNetworkIdentity(
+            *regtest,
+            blockchain,
+            genesis);
+    } catch (...) {
+        valid_identity = false;
+    }
+
+    ok &= Check(
+        valid_identity,
+        "matching chain and genesis accepted");
+
+    BlockchainInfo wrong_chain = blockchain;
+    wrong_chain.chain = "main";
+
+    ok &= Check(
+        ThrowsNetwork([&] {
+            ValidateNetworkIdentity(
+                *regtest,
+                wrong_chain,
+                genesis);
+        }),
+        "chain-name mismatch rejected");
+
+    const auto wrong_genesis =
+        Parse256(
+            "00000000000000000000000000000000"
+            "00000000000000000000000000000001");
+
+    ok &= Check(
+        ThrowsNetwork([&] {
+            ValidateNetworkIdentity(
+                *regtest,
+                blockchain,
+                wrong_genesis);
+        }),
+        "genesis mismatch rejected");
+
+    return ok ? 0 : 1;
+}
