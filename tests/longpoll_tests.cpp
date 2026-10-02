@@ -66,6 +66,7 @@ int main()
 {
     using mercaminer::BuildLongpollTemplateRequest;
     using mercaminer::LongpollTemplateChangesTip;
+    using mercaminer::LongpollTemplateInvalidatesOldWork;
 
     bool ok{true};
 
@@ -109,6 +110,27 @@ int main()
             original_tip,
             replacement_tip),
         "changed template parent is stale work");
+
+    ok &= Check(
+        !LongpollTemplateInvalidatesOldWork(
+            original_tip,
+            original_tip,
+            true),
+        "same-tip submitold=true preserves old work");
+
+    ok &= Check(
+        LongpollTemplateInvalidatesOldWork(
+            original_tip,
+            original_tip,
+            false),
+        "same-tip submitold=false invalidates old work");
+
+    ok &= Check(
+        LongpollTemplateInvalidatesOldWork(
+            original_tip,
+            replacement_tip,
+            true),
+        "new parent invalidates old work");
 
     return ok ? 0 : 1;
 }

@@ -328,5 +328,46 @@ int main()
         }),
         "missing witness commitment rejected");
 
+    ok &= Check(
+        !block_template.submit_old.has_value(),
+        "submitold absent by default");
+
+    auto submit_old_false =
+        RegtestTemplate();
+    submit_old_false["submitold"] = false;
+
+    const auto parsed_submit_old_false =
+        ParseBlockTemplate(
+            submit_old_false);
+
+    ok &= Check(
+        parsed_submit_old_false.submit_old.has_value() &&
+            !*parsed_submit_old_false.submit_old,
+        "submitold=false parsed");
+
+    auto submit_old_true =
+        RegtestTemplate();
+    submit_old_true["submitold"] = true;
+
+    const auto parsed_submit_old_true =
+        ParseBlockTemplate(
+            submit_old_true);
+
+    ok &= Check(
+        parsed_submit_old_true.submit_old.has_value() &&
+            *parsed_submit_old_true.submit_old,
+        "submitold=true parsed");
+
+    auto invalid_submit_old =
+        RegtestTemplate();
+    invalid_submit_old["submitold"] = "false";
+
+    ok &= Check(
+        ThrowsTemplate([&] {
+            (void)ParseBlockTemplate(
+                invalid_submit_old);
+        }),
+        "non-boolean submitold rejected");
+
     return ok ? 0 : 1;
 }

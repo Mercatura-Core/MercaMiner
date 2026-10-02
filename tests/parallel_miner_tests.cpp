@@ -295,5 +295,35 @@ int main()
             secondary_cancelled_original,
         "secondary cancellation leaves candidate unchanged");
 
+    auto refresh_candidate =
+        CoreCheckedCandidate();
+
+    const auto refresh_original =
+        refresh_candidate.serialized_block;
+
+    std::atomic_bool refresh_requested{true};
+
+    const auto refresh_result =
+        miner.Mine(
+            refresh_candidate,
+            impossible_target,
+            0,
+            31,
+            nullptr,
+            nullptr,
+            nullptr,
+            &refresh_requested);
+
+    ok &= Check(
+        refresh_result.status ==
+                ScanStatus::CANCELLED &&
+            refresh_result.hashes_checked == 0,
+        "pending soft refresh stops before next mining chunk");
+
+    ok &= Check(
+        refresh_candidate.serialized_block ==
+            refresh_original,
+        "soft refresh leaves candidate unchanged");
+
     return ok ? 0 : 1;
 }

@@ -59,7 +59,8 @@ public:
         std::uint32_t nonce_end,
         const std::atomic_bool* cancelled = nullptr,
         const std::atomic_bool* cancelled_secondary = nullptr,
-        std::atomic<std::uint64_t>* live_hashes = nullptr);
+        std::atomic<std::uint64_t>* live_hashes = nullptr,
+        const std::atomic_bool* refresh_requested = nullptr);
 
 private:
     std::vector<std::unique_ptr<NonceScanner>>

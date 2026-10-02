@@ -932,9 +932,10 @@ int main(int argc, char* argv[])
                             work.block_template.target,
                             work.block_template.nonce_min,
                             work.block_template.nonce_max,
-                            watcher.StaleFlag(),
+                            watcher.HardCancelFlag(),
                             &shutdown_requested,
-                            &runtime_stats.completed_hashes);
+                            &runtime_stats.completed_hashes,
+                            watcher.RefreshFlag());
 
                     if (result.status ==
                         ScanStatus::CANCELLED) {
@@ -957,7 +958,7 @@ int main(int argc, char* argv[])
                                 << "Longpoll failed: "
                                 << watcher.Error()
                                 << "; refreshing template\n";
-                        } else if (watcher.TipChanged()) {
+                        } else if (watcher.OldWorkInvalidated()) {
                             runtime_stats.stale_work.fetch_add(
                                 1,
                                 std::memory_order_relaxed);
@@ -978,7 +979,7 @@ int main(int argc, char* argv[])
 
                     if (result.status ==
                         ScanStatus::EXHAUSTED) {
-                        if (watcher.IsStale()) {
+                        if (watcher.RefreshRequested()) {
                             const LongpollStatus status =
                                 watcher.Finish();
 
@@ -988,7 +989,7 @@ int main(int argc, char* argv[])
                                     << "Longpoll failed: "
                                     << watcher.Error()
                                     << "; refreshing template\n";
-                            } else if (watcher.TipChanged()) {
+                            } else if (watcher.OldWorkInvalidated()) {
                                 runtime_stats.stale_work.fetch_add(
                                     1,
                                     std::memory_order_relaxed);
@@ -1028,7 +1029,7 @@ int main(int argc, char* argv[])
                         break;
                     }
 
-                    if (watcher.IsStale()) {
+                    if (watcher.RefreshRequested()) {
                         if (watcher_status ==
                             LongpollStatus::RPC_ERROR) {
                             std::osyncstream(std::cerr)
@@ -1036,7 +1037,7 @@ int main(int argc, char* argv[])
                                 << watcher.Error()
                                 << "; submitting solved candidate "
                                 << "anyway\n";
-                        } else if (watcher.TipChanged()) {
+                        } else if (watcher.OldWorkInvalidated()) {
                             runtime_stats.stale_work.fetch_add(
                                 1,
                                 std::memory_order_relaxed);

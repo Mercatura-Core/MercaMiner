@@ -503,6 +503,20 @@ BlockTemplate ParseBlockTemplate(
             "must not be empty");
     }
 
+    const auto submit_old_it =
+        value.find("submitold");
+
+    if (submit_old_it != value.end()) {
+        if (!submit_old_it->is_boolean()) {
+            Fail(
+                "submitold",
+                "expected boolean");
+        }
+
+        result.submit_old =
+            submit_old_it->get<bool>();
+    }
+
     const std::string bits_text =
         RequireString(value, "bits");
 

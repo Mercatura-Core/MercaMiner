@@ -138,7 +138,8 @@ ParallelMineResult ParallelCandidateMiner::Mine(
     std::uint32_t nonce_end,
     const std::atomic_bool* cancelled,
     const std::atomic_bool* cancelled_secondary,
-    std::atomic<std::uint64_t>* live_hashes)
+    std::atomic<std::uint64_t>* live_hashes,
+    const std::atomic_bool* refresh_requested)
 {
     ValidateBlockCandidateForMining(candidate);
 
@@ -159,6 +160,9 @@ ParallelMineResult ParallelCandidateMiner::Mine(
     std::vector<std::jthread> threads;
     threads.reserve(active_workers);
 
+    constexpr std::uint64_t
+        SOFT_REFRESH_CHUNK_NONCES{8};
+
     for (std::size_t worker = 0;
          worker < active_workers;
          ++worker) {
@@ -167,22 +171,90 @@ ParallelMineResult ParallelCandidateMiner::Mine(
                 const auto& range =
                     ranges[worker];
 
-                results[worker] =
-                    m_scanners[worker]->Scan(
-                        candidate.header,
-                        target,
-                        range.begin,
-                        range.end,
-                        &stop,
-                        cancelled,
-                        cancelled_secondary,
-                        live_hashes);
+                std::uint32_t chunk_begin =
+                    range.begin;
+                std::uint64_t worker_hashes{0};
 
-                if (results[worker].status ==
-                    ScanStatus::FOUND) {
-                    stop.store(
-                        true,
-                        std::memory_order_relaxed);
+                for (;;) {
+                    if (refresh_requested != nullptr &&
+                        refresh_requested->load(
+                            std::memory_order_relaxed)) {
+                        results[worker] =
+                            ScanResult{
+                                ScanStatus::CANCELLED,
+                                chunk_begin,
+                                UInt256{},
+                                worker_hashes};
+                        return;
+                    }
+
+                    const std::uint64_t proposed_end =
+                        static_cast<std::uint64_t>(
+                            chunk_begin) +
+                        SOFT_REFRESH_CHUNK_NONCES - 1;
+
+                    const std::uint32_t chunk_end =
+                        proposed_end <
+                            static_cast<std::uint64_t>(
+                                range.end)
+                            ? static_cast<std::uint32_t>(
+                                  proposed_end)
+                            : range.end;
+
+                    ScanResult chunk_result =
+                        m_scanners[worker]->Scan(
+                            candidate.header,
+                            target,
+                            chunk_begin,
+                            chunk_end,
+                            &stop,
+                            cancelled,
+                            cancelled_secondary,
+                            live_hashes);
+
+                    worker_hashes =
+                        SaturatingAdd(
+                            worker_hashes,
+                            chunk_result.hashes_checked);
+
+                    chunk_result.hashes_checked =
+                        worker_hashes;
+
+                    if (chunk_result.status !=
+                        ScanStatus::EXHAUSTED) {
+                        results[worker] =
+                            chunk_result;
+
+                        if (chunk_result.status ==
+                            ScanStatus::FOUND) {
+                            stop.store(
+                                true,
+                                std::memory_order_relaxed);
+                        }
+
+                        return;
+                    }
+
+                    if (chunk_end == range.end) {
+                        results[worker] =
+                            chunk_result;
+                        return;
+                    }
+
+                    if (refresh_requested != nullptr &&
+                        refresh_requested->load(
+                            std::memory_order_relaxed)) {
+                        results[worker] =
+                            ScanResult{
+                                ScanStatus::CANCELLED,
+                                chunk_end,
+                                UInt256{},
+                                worker_hashes};
+                        return;
+                    }
+
+                    chunk_begin =
+                        chunk_end + 1;
                 }
             });
     }

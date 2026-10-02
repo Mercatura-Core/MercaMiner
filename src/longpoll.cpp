@@ -43,6 +43,18 @@ bool LongpollTemplateChangesTip(
         replacement_previous_block_hash;
 }
 
+bool LongpollTemplateInvalidatesOldWork(
+    const UInt256& expected_previous_block_hash,
+    const UInt256& replacement_previous_block_hash,
+    bool submit_old) noexcept
+{
+    return
+        LongpollTemplateChangesTip(
+            expected_previous_block_hash,
+            replacement_previous_block_hash) ||
+        !submit_old;
+}
+
 LongpollWatcher::LongpollWatcher(
     std::string rpc_url,
     RpcCredentials credentials,
@@ -92,17 +104,26 @@ void LongpollWatcher::Run()
                     }),
                 options);
 
-        // Validate the replacement template and distinguish
-        // a same-tip mempool/template refresh from a real chain-tip
-        // change. Both stop the current scan, but only the latter is
-        // genuinely stale work.
+        // Distinguish hard invalidation of old work from a
+        // same-tip template refresh. Same-tip work remains useful
+        // unless the server explicitly returns submitold=false.
         const BlockTemplate replacement_template =
             ParseBlockTemplate(response);
 
-        m_tip_changed.store(
+        const bool tip_changed =
             LongpollTemplateChangesTip(
                 m_expected_previous_block_hash,
-                replacement_template.previous_block_hash),
+                replacement_template.previous_block_hash);
+
+        m_tip_changed.store(
+            tip_changed,
+            std::memory_order_relaxed);
+
+        m_hard_cancel.store(
+            LongpollTemplateInvalidatesOldWork(
+                m_expected_previous_block_hash,
+                replacement_template.previous_block_hash,
+                replacement_template.submit_old.value_or(true)),
             std::memory_order_relaxed);
 
         if (m_cancel_requested.load(
@@ -116,7 +137,7 @@ void LongpollWatcher::Run()
         m_status =
             LongpollStatus::TEMPLATE_CHANGED;
 
-        m_stale.store(
+        m_refresh_requested.store(
             true,
             std::memory_order_relaxed);
     } catch (const RpcCancelledException&) {
@@ -134,7 +155,7 @@ void LongpollWatcher::Run()
         m_status =
             LongpollStatus::RPC_ERROR;
 
-        m_stale.store(
+        m_refresh_requested.store(
             true,
             std::memory_order_relaxed);
     } catch (const std::exception& error) {
@@ -143,7 +164,7 @@ void LongpollWatcher::Run()
         m_status =
             LongpollStatus::RPC_ERROR;
 
-        m_stale.store(
+        m_refresh_requested.store(
             true,
             std::memory_order_relaxed);
     }

@@ -55,6 +55,7 @@ struct BlockTemplate
     std::string coinbase_aux_flags;
     std::uint64_t coinbase_value{};
     std::string longpoll_id;
+    std::optional<bool> submit_old;
 
     UInt256 target{};
     std::uint32_t bits{};

@@ -32,6 +32,11 @@ bool LongpollTemplateChangesTip(
     const UInt256& expected_previous_block_hash,
     const UInt256& replacement_previous_block_hash) noexcept;
 
+bool LongpollTemplateInvalidatesOldWork(
+    const UInt256& expected_previous_block_hash,
+    const UInt256& replacement_previous_block_hash,
+    bool submit_old) noexcept;
+
 class LongpollWatcher
 {
 public:
@@ -49,14 +54,25 @@ public:
     LongpollWatcher& operator=(
         const LongpollWatcher&) = delete;
 
-    const std::atomic_bool* StaleFlag() const noexcept
+    const std::atomic_bool* HardCancelFlag() const noexcept
     {
-        return &m_stale;
+        return &m_hard_cancel;
     }
 
-    bool IsStale() const noexcept
+    const std::atomic_bool* RefreshFlag() const noexcept
     {
-        return m_stale.load(
+        return &m_refresh_requested;
+    }
+
+    bool OldWorkInvalidated() const noexcept
+    {
+        return m_hard_cancel.load(
+            std::memory_order_relaxed);
+    }
+
+    bool RefreshRequested() const noexcept
+    {
+        return m_refresh_requested.load(
             std::memory_order_relaxed);
     }
 
@@ -83,7 +99,8 @@ private:
     UInt256 m_expected_previous_block_hash;
 
     std::atomic_bool m_cancel_requested{false};
-    std::atomic_bool m_stale{false};
+    std::atomic_bool m_hard_cancel{false};
+    std::atomic_bool m_refresh_requested{false};
     std::atomic_bool m_tip_changed{false};
 
     LongpollStatus m_status{
