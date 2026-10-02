@@ -34,13 +34,25 @@ nlohmann::json BuildLongpollTemplateRequest(
     };
 }
 
+bool LongpollTemplateChangesTip(
+    const UInt256& expected_previous_block_hash,
+    const UInt256& replacement_previous_block_hash) noexcept
+{
+    return
+        expected_previous_block_hash !=
+        replacement_previous_block_hash;
+}
+
 LongpollWatcher::LongpollWatcher(
     std::string rpc_url,
     RpcCredentials credentials,
-    std::string longpoll_id)
+    std::string longpoll_id,
+    UInt256 expected_previous_block_hash)
     : m_rpc_url(std::move(rpc_url)),
       m_credentials(std::move(credentials)),
-      m_longpoll_id(std::move(longpoll_id))
+      m_longpoll_id(std::move(longpoll_id)),
+      m_expected_previous_block_hash(
+          std::move(expected_previous_block_hash))
 {
     if (m_longpoll_id.empty()) {
         throw std::invalid_argument(
@@ -80,9 +92,18 @@ void LongpollWatcher::Run()
                     }),
                 options);
 
-        // Validate that a normal longpoll return is still
-        // a complete Mercatura block template.
-        (void)ParseBlockTemplate(response);
+        // Validate the replacement template and distinguish
+        // a same-tip mempool/template refresh from a real chain-tip
+        // change. Both stop the current scan, but only the latter is
+        // genuinely stale work.
+        const BlockTemplate replacement_template =
+            ParseBlockTemplate(response);
+
+        m_tip_changed.store(
+            LongpollTemplateChangesTip(
+                m_expected_previous_block_hash,
+                replacement_template.previous_block_hash),
+            std::memory_order_relaxed);
 
         if (m_cancel_requested.load(
                 std::memory_order_relaxed)) {

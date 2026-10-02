@@ -907,7 +907,8 @@ int main(int argc, char* argv[])
                 LongpollWatcher watcher{
                     connection.rpc_url,
                     credentials,
-                    work.block_template.longpoll_id};
+                    work.block_template.longpoll_id,
+                    work.block_template.previous_block_hash};
 
                 bool refresh_template{false};
 
@@ -956,14 +957,19 @@ int main(int argc, char* argv[])
                                 << "Longpoll failed: "
                                 << watcher.Error()
                                 << "; refreshing template\n";
-                        } else {
+                        } else if (watcher.TipChanged()) {
                             runtime_stats.stale_work.fetch_add(
                                 1,
                                 std::memory_order_relaxed);
 
                             std::osyncstream(std::cout)
-                                << "Longpoll reported new work; "
-                                << "discarding stale candidate\n";
+                                << "Longpoll reported a new chain tip; "
+                                << "discarding stale work\n";
+                        } else {
+                            std::osyncstream(std::cout)
+                                << "Longpoll reported a same-tip "
+                                << "template update; refreshing "
+                                << "template\n";
                         }
 
                         refresh_template = true;
@@ -982,14 +988,19 @@ int main(int argc, char* argv[])
                                     << "Longpoll failed: "
                                     << watcher.Error()
                                     << "; refreshing template\n";
-                            } else {
+                            } else if (watcher.TipChanged()) {
                                 runtime_stats.stale_work.fetch_add(
                                     1,
                                     std::memory_order_relaxed);
 
                                 std::osyncstream(std::cout)
-                                    << "Longpoll reported new work; "
-                                    << "refreshing template\n";
+                                    << "Longpoll reported a new chain "
+                                    << "tip; refreshing template\n";
+                            } else {
+                                std::osyncstream(std::cout)
+                                    << "Longpoll reported a same-tip "
+                                    << "template update; refreshing "
+                                    << "template\n";
                             }
 
                             refresh_template = true;
@@ -1023,21 +1034,26 @@ int main(int argc, char* argv[])
                             std::osyncstream(std::cerr)
                                 << "Longpoll failed: "
                                 << watcher.Error()
-                                << "; discarding solved candidate "
-                                << "and refreshing template\n";
-                        } else {
+                                << "; submitting solved candidate "
+                                << "anyway\n";
+                        } else if (watcher.TipChanged()) {
                             runtime_stats.stale_work.fetch_add(
                                 1,
                                 std::memory_order_relaxed);
 
                             std::osyncstream(std::cout)
-                                << "Template changed while solution "
+                                << "Chain tip changed while solution "
                                 << "was being found; discarding "
                                 << "solved candidate\n";
-                        }
 
-                        refresh_template = true;
-                        continue;
+                            refresh_template = true;
+                            continue;
+                        } else {
+                            std::osyncstream(std::cout)
+                                << "Template changed on the same tip "
+                                << "while solution was being found; "
+                                << "submitting solved candidate\n";
+                        }
                     }
 
                     const auto solved_header =

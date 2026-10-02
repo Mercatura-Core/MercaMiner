@@ -33,6 +33,20 @@ bool Check(
     return true;
 }
 
+mercaminer::UInt256 Parse256(
+    const char* hex)
+{
+    const auto value =
+        mercaminer::UInt256::FromHexBE(hex);
+
+    if (!value) {
+        throw std::runtime_error(
+            "invalid test uint256 constant");
+    }
+
+    return *value;
+}
+
 template <typename Callable>
 bool ThrowsInvalidArgument(
     Callable&& callable)
@@ -51,6 +65,7 @@ bool ThrowsInvalidArgument(
 int main()
 {
     using mercaminer::BuildLongpollTemplateRequest;
+    using mercaminer::LongpollTemplateChangesTip;
 
     bool ok{true};
 
@@ -72,6 +87,28 @@ int main()
             (void)BuildLongpollTemplateRequest("");
         }),
         "empty longpoll id rejected");
+
+    const auto original_tip =
+        Parse256(
+            "11111111111111111111111111111111"
+            "11111111111111111111111111111111");
+
+    const auto replacement_tip =
+        Parse256(
+            "22222222222222222222222222222222"
+            "22222222222222222222222222222222");
+
+    ok &= Check(
+        !LongpollTemplateChangesTip(
+            original_tip,
+            original_tip),
+        "same-tip template refresh is not stale work");
+
+    ok &= Check(
+        LongpollTemplateChangesTip(
+            original_tip,
+            replacement_tip),
+        "changed template parent is stale work");
 
     return ok ? 0 : 1;
 }
