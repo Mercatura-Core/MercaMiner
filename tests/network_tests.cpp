@@ -81,8 +81,8 @@ int main()
             testnet->default_rpc_port == 27775 &&
             testnet->data_dir == "testnet" &&
             testnet->genesis_hash ==
-                "b92d6e7f680a111c3e5c91bf87aafab"
-                "ce04ecb16dcefde61a535cadf3941b51d",
+                "b3fc707c9a89dc45d1cf6a837284b22a"
+                "d2b6fd41b99af601079db9dcbeff6920",
         "testnet identity pinned");
 
     ok &= Check(
@@ -126,9 +126,13 @@ int main()
         "7fffffffffffffffffffffffffffffff"
         "ffffffffffffffffffffffffffffffff";
 
+    static constexpr const char* TESTNET_POW_LIMIT =
+        "003fffffffffffffffffffffffffffff"
+        "ffffffffffffffffffffffffffffffff";
+
     ok &= Check(
         mainnet->pow_limit == POW_LIMIT &&
-            testnet->pow_limit == POW_LIMIT &&
+            testnet->pow_limit == TESTNET_POW_LIMIT &&
             signet->pow_limit == POW_LIMIT &&
             regtest->pow_limit == POW_LIMIT,
         "Mercatura network powLimit constants pinned");
@@ -162,6 +166,36 @@ int main()
                 above_pow_limit);
         }),
         "target above powLimit rejected");
+
+    const auto testnet_pow_limit =
+        Parse256(TESTNET_POW_LIMIT);
+
+    const auto above_testnet_pow_limit =
+        Parse256(
+            "00400000000000000000000000000000"
+            "00000000000000000000000000000000");
+
+    bool exact_testnet_pow_limit_valid{true};
+
+    try {
+        ValidateProofOfWorkTarget(
+            *testnet,
+            testnet_pow_limit);
+    } catch (...) {
+        exact_testnet_pow_limit_valid = false;
+    }
+
+    ok &= Check(
+        exact_testnet_pow_limit_valid,
+        "testnet target equal to public powLimit accepted");
+
+    ok &= Check(
+        ThrowsNetwork([&] {
+            ValidateProofOfWorkTarget(
+                *testnet,
+                above_testnet_pow_limit);
+        }),
+        "testnet target above public powLimit rejected");
 
     BlockchainInfo blockchain;
     blockchain.chain = "regtest";
