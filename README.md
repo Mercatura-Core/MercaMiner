@@ -6,7 +6,7 @@ It mines Mercatura's MercaHash V1 proof-of-work directly against Mercatura
 Core using the Bitcoin-family `getblocktemplate` and `submitblock` RPC
 interfaces.
 
-MercaMiner v0.1 targets Linux x86_64 and solo RPC mining.
+MercaMiner v0.1 currently targets Linux x86_64 and solo RPC mining against a Mercatura Core node.
 
 GPU mining and pool/Stratum protocols are outside the scope of v0.1.
 
@@ -38,10 +38,27 @@ including:
 - configurable runtime status reporting;
 - MercaHash benchmark tooling.
 
-MercaMiner has completed local regtest and testnet validation.
+MercaMiner is actively used on the live Mercatura public testnet.
 
-Longer multi-node burn-in will continue as part of normal Mercatura testnet
-operation.
+Current public-testnet release:
+
+https://github.com/Mercatura-Core/MercaMiner/releases/tag/v0.1.0-testnet2
+
+For public-testnet mining, use:
+
+```text
+--network test
+```
+
+MercaMiner connects to a Mercatura Core node through `getblocktemplate` and `submitblock`.
+
+Public testnet resources:
+
+- Website: https://mercaturacore.com
+- Explorer: https://explorer.mercaturacore.com/?network=testnet
+- Bootstrap peer for Mercatura Core: `node1.mercaturacore.com:27778`
+
+**Testnet MCA is for testing only and has no monetary value.**
 
 ## Requirements
 
